@@ -23,7 +23,7 @@ source("./R/functions/check_hemisphere_good.R")
 
 set.seed(123)
 
-n_resamples <- 100   # use 1000 for final
+n_resamples <- 100  # use 100 for final
 
 baseline_qc <- "occurrence5_k1_tropical_temperate"
 
@@ -96,6 +96,9 @@ lat_zone_lookup <- lat_bins %>%
   ) %>%
   select(bin, abs_lat_bin_mid, lat_zone)
 
+eligible_abs_lat_bins <-
+  sort(unique(lat_zone_lookup$abs_lat_bin_mid))
+
 all_stage_hemi <- expand.grid(
   bin_midpoint = sort(unique(rich_raw$bin_midpoint[rich_raw$bin_midpoint <= 486.8500])),
   hemisphere = c("Northern", "Southern"),
@@ -141,13 +144,12 @@ fit_cell_ols_safe <- function(df, y_col = "qD_normalized", x_col = "abs_lat") {
   
   slope <- as.numeric(cf[x_col, "Estimate"])
   se <- as.numeric(cf[x_col, "Std. Error"])
-  
   tibble(
     slope = slope,
     intercept = as.numeric(cf["(Intercept)", "Estimate"]),
     slope_se = se,
-    slope_lower_95 = slope - 1.96 * se,
-    slope_upper_95 = slope + 1.96 * se,
+    slope_lower_95 = slope - 1.96*se,
+    slope_upper_95 = slope + 1.96*se,
     p_value = as.numeric(cf[x_col, "Pr(>|t|)"]),
     r_squared = as.numeric(sm$r.squared),
     n_cells_model = nrow(df)
@@ -295,7 +297,7 @@ empty_hemi_qc <- function() {
   )
 }
 
-classify_stage_hemisphere_qc <- function(rich_for_qc, qc_row) {
+classify_stage_hemisphere_qc <- function(rich_for_qc, qc_row, rich_for_sampling = rich_for_qc) {
   
   if (!nrow(rich_for_qc)) return(empty_hemi_qc())
   
@@ -323,9 +325,13 @@ classify_stage_hemisphere_qc <- function(rich_for_qc, qc_row) {
     ) %>%
     left_join(adj, by = c("bin_midpoint", "hemisphere"))
   
-  latstats <- rich_for_qc %>%
+  latstats <- rich_for_sampling %>%
     count(bin_midpoint, hemisphere, abs_lat_bin_mid, name = "n_cells_latbin") %>%
     group_by(bin_midpoint, hemisphere) %>%
+    complete(
+      abs_lat_bin_mid = eligible_abs_lat_bins,
+      fill = list(n_cells_latbin = 0L)
+    )%>%
     summarise(
       k_min = min(n_cells_latbin),
       k_max = max(n_cells_latbin),
@@ -427,7 +433,8 @@ rich_for_qc <- filter_valid_latbins_for_qc(
 
 hemi_QC_summary <- classify_stage_hemisphere_qc(
   rich_for_qc,
-  baseline_filter
+  baseline_filter,
+  rich_for_slope
 ) %>%
   complete_hemi_qc(baseline_filter)
 
@@ -483,7 +490,7 @@ sampling_profile_dissim <- rich_for_slope %>%
 # -----------------------------------------------------------------------
 # 6. Per-cell balanced resampling OLS slopes
 # -----------------------------------------------------------------------
-
+set.seed(123)
 percell_raw_resamples <- rich_for_slope %>%
   group_by(bin_midpoint, stage, hemisphere) %>%
   group_modify(~ run_balanced_resampling_ols(.x)) %>%

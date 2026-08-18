@@ -21,14 +21,17 @@
 #     list(c(6, 3, 2, 1)) 
 #     # 6 = total rows, 3 = Panthera, 2 = Felis, 1 = Canis
 
-incfreq <- function(dat){
-  freq <- dat %>%
+incfreq <- function(dat) {
+  incidence_dat <- dat %>%
+    distinct(collection_no, genus)
+  
+  freq <- incidence_dat %>%
     count(genus, name = "frequency") %>%
     arrange(desc(frequency))
-  nT <- nrow(dat)
-  y <- c(nT, freq$frequency)
-  y <- as.numeric(y)
-  return(y)
+  
+  nT <- n_distinct(dat$collection_no)
+  
+  as.numeric(c(nT, freq$frequency))
 }
 
 

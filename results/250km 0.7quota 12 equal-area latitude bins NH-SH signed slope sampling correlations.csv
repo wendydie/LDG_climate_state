@@ -1,8 +1,0 @@
-"test","x_var","y_var","n","estimate","p_value"
-"NH slope vs SH slope","slope_Northern","slope_Southern",48,"-0.149","0.311"
-"|NH-SH slope| vs sampling-profile dissimilarity","sampling_profile_dissim","slope_diff_abs",48,"-0.259","0.076"
-"|NH-SH slope| vs k_cv difference","k_cv_diff","slope_diff_abs",48,"-0.273","0.060"
-"|NH-SH slope| vs k_median asymmetry","k_median_asym","slope_diff_abs",48,"-0.303","0.036"
-"NH-SH slope vs sampling-profile dissimilarity","sampling_profile_dissim","slope_diff_signed",48,"0.239","0.102"
-"NH-SH slope vs signed k_cv difference","k_cv_diff_signed","slope_diff_signed",48,"0.184","0.210"
-"NH-SH slope vs signed k_median difference","k_median_diff_signed","slope_diff_signed",48,"0.144","0.330"

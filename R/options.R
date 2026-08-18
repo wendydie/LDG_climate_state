@@ -1,7 +1,7 @@
 # Header ----------------------------------------------------------------
 # Project: LDG_climate_state
 # File name: options.R
-# Last updated: 2025-10-15
+# Last updated: 2026-08-01
 # -----------------------------------------------------------------------
 
 # Parameters and options for analyses
@@ -12,17 +12,15 @@ params <- list(
   base_url = "https://paleobiodb.org/data1.2/occs/list.csv",
   # PBDB Download options
   query = list(
-    base_name = paste(c("Bivalvia", "Brachiopoda", "Gastropoda", 
-                        "Trilobita", "Bryozoa", "Echinoidea"), 
-                      collapse = ","),
+    base_name = "Animalia^Vertebrata",
     taxon_reso = "genus",
-    ident = "latest",
+    idtype = "latest",
     taxon_status = "valid",
     idqual = "genus_certain",
     pres = "regular",
-    interval = "Fortunian,Holocene",
+    interval = "Tremadocian,Holocene",
     envtype = "marine",
-    show = "genus,pres,strat,coll,coords,loc,class"),
+    show = "genus,pres,strat,coll,coords,loc,class,env,resgroup"),
   # The geological rank for conducting analyses
   rank = "stage",
   # The Geological Time Scale to be used

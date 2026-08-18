@@ -81,7 +81,20 @@ rich_df<-read.csv(sprintf(
 ))
 
 LDG_slope<-read.csv(slope_file)
+raw_slope_file <- sprintf(
+  "./results/%skm %squota %s equal-area latitude bins LDG slope per-cell balanced OLS raw resamples.csv",
+  params$spacing,
+  params$level,
+  rich_params$n_lat_bins
+)
 
+LDG_slope_raw <- read.csv(raw_slope_file) %>%
+  mutate(
+    bin_midpoint = safe_num(bin_midpoint),
+    slope = safe_num(slope),
+    intercept = safe_num(intercept),
+    hemisphere = as.character(hemisphere)
+  )
 time_bins<-readRDS("./data/time_bins.RDS")
 
 lat_bins<-palaeoverse::lat_bins_area(n=rich_params$n_lat_bins)%>%
@@ -199,34 +212,105 @@ LDG_slope<-LDG_slope%>%
 if(!"slope_lower_95"%in%names(LDG_slope))LDG_slope$slope_lower_95<-NA_real_
 if(!"slope_upper_95"%in%names(LDG_slope))LDG_slope$slope_upper_95<-NA_real_
 
-line_range<-rich_df%>%
-  group_by(bin_midpoint,stage,hemisphere)%>%
+line_range <- rich_df %>%
+  group_by(bin_midpoint, stage, hemisphere) %>%
   summarise(
-    x_min=min(abs_lat,na.rm=TRUE),
-    x_max=max(abs_lat,na.rm=TRUE),
-    .groups="drop"
+    x_min = min(abs_lat, na.rm = TRUE),
+    x_max = max(abs_lat, na.rm = TRUE),
+    .groups = "drop"
   )
 
-ols_lines<-LDG_slope%>%
-  left_join(line_range,by=c("bin_midpoint","stage","hemisphere"))%>%
-  mutate(
-    hemisphere_mod=ifelse(label=="bad","Poor quality",hemisphere),
-    hemisphere_mod=factor(hemisphere_mod,levels=c("Northern","Southern","Poor quality"))
-  )%>%
+qc_lookup <- LDG_slope %>%
+  select(bin_midpoint, stage, hemisphere, label) %>%
+  distinct()
+
+ols_lines <- LDG_slope_raw %>%
+  left_join(
+    line_range,
+    by = c("bin_midpoint", "stage", "hemisphere")
+  ) %>%
   filter(
-    !is.na(slope),
-    !is.na(intercept),
-    !is.na(x_min),
-    !is.na(x_max)
-  )%>%
-  mutate(abs_lat=map2(x_min,x_max,~seq(.x,.y,length.out=100)))%>%
-  unnest(abs_lat)%>%
+    is.finite(slope),
+    is.finite(intercept),
+    is.finite(x_min),
+    is.finite(x_max)
+  ) %>%
+  group_by(bin_midpoint, stage, hemisphere) %>%
+  group_modify(~{
+    
+    x_grid <- seq(
+      unique(.x$x_min)[1],
+      unique(.x$x_max)[1],
+      length.out = 100
+    )
+    
+    # 保持每次重采样的 slope/intercept 配对
+    predicted <- outer(
+      .x$intercept,
+      rep(1, length(x_grid))
+    ) + outer(
+      .x$slope,
+      x_grid
+    )
+    
+    # 中心线使用中位截距和中位斜率，保持直线
+    median_intercept <- median(
+      .x$intercept,
+      na.rm = TRUE
+    )
+    
+    median_slope <- median(
+      .x$slope,
+      na.rm = TRUE
+    )
+    
+    tibble(
+      abs_lat = x_grid,
+      
+      fitted_values =
+        median_intercept +
+        median_slope * x_grid,
+      
+      # 置信范围使用联合重采样预测
+      fitted_lower = apply(
+        predicted,
+        2,
+        quantile,
+        probs = 0.025,
+        na.rm = TRUE
+      ),
+      
+      fitted_upper = apply(
+        predicted,
+        2,
+        quantile,
+        probs = 0.975,
+        na.rm = TRUE
+      ),
+      
+      n_resamples_valid = nrow(.x)
+    )
+  }) %>%
+  ungroup() %>%
+  left_join(
+    qc_lookup,
+    by = c("bin_midpoint", "stage", "hemisphere")
+  ) %>%
   mutate(
-    fitted_values=intercept+slope*abs_lat,
-    fitted_lower_raw=intercept+slope_lower_95*abs_lat,
-    fitted_upper_raw=intercept+slope_upper_95*abs_lat,
-    fitted_lower=pmin(fitted_lower_raw,fitted_upper_raw,na.rm=FALSE),
-    fitted_upper=pmax(fitted_lower_raw,fitted_upper_raw,na.rm=FALSE)
+    label = ifelse(is.na(label), "bad", label),
+    hemisphere_mod = ifelse(
+      label == "bad",
+      "Poor quality",
+      hemisphere
+    ),
+    hemisphere_mod = factor(
+      hemisphere_mod,
+      levels = c(
+        "Northern",
+        "Southern",
+        "Poor quality"
+      )
+    )
   )
 
 # -----------------------------------------------------------------------
@@ -298,12 +382,14 @@ combined_rich_fig<-ggplot(
     expand=c(0,0)
   )+
   scale_y_continuous(
-    limits=c(0,100),
     breaks=function(y){
       max_val<-100
       mid_val<- 50 #ceiling(max_val/2/10)*10
       c(0,mid_val,max_val)
     }
+  )+
+  coord_cartesian(
+    ylim = c(0, 100)
   )+
   labs(
     x="Absolute palaeolatitude (°)",
@@ -420,6 +506,12 @@ for(stg in unique(rich_df$stage)){
       breaks=c(0,30,60,90),
       expand=c(0,0)
     )+
+    scale_y_continuous(
+      breaks = c(0, 50, 100)
+    ) +
+    coord_cartesian(
+      ylim = c(0, 100)
+    ) +
     guides(
       color=guide_legend(
         override.aes=list(shape=NA,linewidth=1)

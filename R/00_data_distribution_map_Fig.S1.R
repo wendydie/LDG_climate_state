@@ -66,8 +66,8 @@ make_map <- function(point_sf, panel_label) {
 }
 
 # A 和 B
-pA <- make_map(modern_sf, "A")
-pB <- make_map(paleo_sf, "B")
+pA <- make_map(modern_sf, "(a)")
+pB <- make_map(paleo_sf, "(b)")
 
 # 合并成一个图
 coll_map <- pA / pB +

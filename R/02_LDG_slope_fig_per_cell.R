@@ -325,6 +325,44 @@ LDG_s_plot<-ggplot(
     legend.spacing.y=unit(-0.05,"pt")
   )
 
+# -----------------------------------------------------------------------
+# Geological era labels for facet rows
+# -----------------------------------------------------------------------
+
+ncol_facet <- 6
+
+facet_order <- rich_df %>%
+  distinct(bin_midpoint, stage) %>%
+  mutate(
+    bin_midpoint = as.numeric(as.character(bin_midpoint))
+  ) %>%
+  arrange(desc(bin_midpoint)) %>%
+  mutate(
+    facet_id = row_number(),
+    facet_row = ceiling(facet_id / ncol_facet),
+    
+    era = case_when(
+      bin_midpoint > 251.902 ~ "Palaeozoic",
+      bin_midpoint > 66.0    ~ "Mesozoic",
+      TRUE                   ~ "Cenozoic"
+    )
+  )
+
+n_facet_rows <- max(facet_order$facet_row)
+
+era_position <- facet_order %>%
+  group_by(era) %>%
+  summarise(
+    row_min = min(facet_row),
+    row_max = max(facet_row),
+    row_mid = (row_min + row_max) / 2,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    # convert facet-row position to 0–1 coordinates
+    y = 1 - (row_mid - 0.5) / n_facet_rows
+  )
+
 p_main<-LDG_s_plot+theme(legend.position="none")
 
 legend_obj<-cowplot::get_legend(
@@ -341,15 +379,50 @@ legend_obj<-cowplot::get_legend(
     )
 )
 
-LDG_s_plot_final<-p_main+
+p_main_with_legend <- p_main +
   inset_element(
     legend_obj,
-    left=0.63,
-    bottom=-0.02,
-    right=0.88,
-    top=0.04,
-    clip=FALSE,
-    on_top=TRUE
+    left = 0.63,
+    bottom = -0.02,
+    right = 0.88,
+    top = 0.04,
+    clip = FALSE,
+    on_top = TRUE
+  )
+era_panel <- ggplot(
+  era_position,
+  aes(x = 0.5, y = y, label = era)
+) +
+  geom_text(
+    angle = 270,
+    size = 3.5,
+    fontface = "bold"
+  ) +
+  coord_cartesian(
+    xlim = c(0, 1),
+    ylim = c(0, 1),
+    clip = "off"
+  ) +
+  theme_void() +
+  theme(
+    plot.margin = margin(0, 3, 0, 0)
+  )
+
+# LDG_s_plot_final<-p_main+
+#   inset_element(
+#     legend_obj,
+#     left=0.63,
+#     bottom=-0.02,
+#     right=0.88,
+#     top=0.04,
+#     clip=FALSE,
+#     on_top=TRUE
+#   )
+LDG_s_plot_final <-
+  p_main_with_legend +
+  era_panel +
+  plot_layout(
+    widths = c(1, 0.055)
   )
 
 print(LDG_s_plot_final)
@@ -458,3 +531,119 @@ for(stg in unique(rich_df$stage)){
 
 print(gg_path)
 print(out_dir_stage)
+# -----------------------------------------------------------------------
+# 6.Faceted LDG percentile curves
+# -----------------------------------------------------------------------
+stage_lookup <- rich_df %>%
+  distinct(bin_midpoint, stage) %>%
+  mutate(
+    bin_midpoint = as.numeric(as.character(bin_midpoint))
+  ) %>%
+  arrange(bin_midpoint)
+percentiles_use <- c("q50", "q60", "q75", "q90", "q95")
+
+richness_percentiles <- rich_df %>%
+  group_by(bin_midpoint, lat_bin_mid) %>%
+  summarise(
+    q50 = quantile(qD_normalized, 0.50, na.rm = TRUE),
+    q60 = quantile(qD_normalized, 0.60, na.rm = TRUE),
+    q75 = quantile(qD_normalized, 0.75, na.rm = TRUE),
+    q90 = quantile(qD_normalized, 0.90, na.rm = TRUE),
+    q95 = quantile(qD_normalized, 0.95, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = all_of(percentiles_use),
+    names_to = "Percentile",
+    values_to = "richness"
+  ) %>%
+  mutate(
+    Percentile = factor(
+      Percentile,
+      levels = percentiles_use
+    )
+  )
+
+LDG_fig <- ggplot() +
+  geom_point(
+    data = rich_df,
+    aes(x = cell_lat, y = qD_normalized),
+    size = 0.6,
+    color = "black",
+    alpha = 0.3
+  ) +
+  geom_line(
+    data = richness_percentiles,
+    aes(
+      x = lat_bin_mid,
+      y = richness,
+      color = Percentile,
+      group = Percentile
+    ),
+    alpha = 0.7,
+    linewidth = 0.8
+  ) +
+  facet_wrap(
+    ~reorder(bin_midpoint, -as.numeric(as.character(bin_midpoint))),
+    labeller = as_labeller(function(x) {
+      stage_lookup$stage[
+        match(as.numeric(x), stage_lookup$bin_midpoint)
+      ]
+    }),
+    ncol = 6
+  ) +
+  scale_x_continuous(
+    limits = c(-90, 90),
+    breaks = c(-50, 0, 50),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    breaks = c(0, 50, 100),
+    expand = expansion(mult = c(0, 0.03))
+  ) +
+  labs(
+    x = "Palaeolatitude",
+    y = "Normalized generic richness",
+    color = "Percentile"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(
+      size = 8,
+      face = "bold",
+      margin = margin(1, 1, 1, 1)
+    ),
+    strip.placement = "inside",
+    panel.spacing.x = unit(0.5, "lines"),
+    panel.spacing.y = unit(0.01, "lines"),
+    panel.border = element_rect(
+      color = "black",
+      fill = NA,
+      linewidth = 1
+    ),
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 8, color = "black"),
+    axis.text.y = element_text(size = 8, color = "black"),
+    axis.title = element_text(size = 12, color = "black"),
+    legend.position = "bottom"
+  )
+
+print(LDG_fig)
+
+LDG_f_path <- sprintf(
+  "./figures/LDG_per_stage_facet_%s_km_%s_quota_%s_equal_area_latitude_bins.jpg",
+  params$spacing,
+  params$level,
+  rich_params$n_lat_bins
+)
+
+ggsave(
+  LDG_f_path,
+  LDG_fig,
+  width = 8,
+  height = 9,
+  dpi = 300
+)
+
+print(LDG_f_path)

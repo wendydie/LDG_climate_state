@@ -22,8 +22,8 @@ if (params$clean_again || !file.exists("./data/processed/pbdb_data.RDS")){
 dggs <- dgconstruct(spacing = params$spacing, metric=TRUE, resround='nearest')
 # Get cells
 occdf$cell <- dgGEO_to_SEQNUM(dggs = dggs, 
-                               in_lon_deg = occdf[, params$p_lng], 
-                               in_lat_deg = occdf[, params$p_lat])$seqnum
+                               in_lon_deg = occdf[[params$p_lng]], 
+                               in_lat_deg = occdf[[params$p_lat]])$seqnum
 # Get coordinates from cells
 cellcenter <- dgSEQNUM_to_GEO(dggs, occdf$cell)
 occdf$cell_lng <- cellcenter$lon_deg

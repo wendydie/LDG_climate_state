@@ -28,8 +28,13 @@ source("./R/functions/check_hemisphere_good.R")
 # -----------------------------------------------------------------------
 
 set.seed(123)
-
-n_resamples <- 100          # use 1000 for final
+filter_seeds <- c(
+  occurrence5  = 123L,
+  occurrence10 = 124L,
+  collection5  = 125L,
+  collection10 = 126L
+)
+n_resamples <- 100          # use 100 for final
 save_raw_resamples <- FALSE # TRUE only for debugging
 min_time_series_retention <- 0.5
 
@@ -37,12 +42,19 @@ baseline_qc <- "occurrence5_k1_tropical_temperate"
 
 climate_levels <- c("Coldhouse", "Coolhouse", "Transitional", "Warmhouse", "Hothouse")
 
+# climate_colors <- c(
+#   "Coldhouse"    = "#005344",
+#   "Coolhouse"    = "#007d65",
+#   "Transitional" = "#c8c7c7",
+#   "Warmhouse"    = "#b57a51",
+#   "Hothouse"     = "#95484b"
+# )
 climate_colors <- c(
-  "Coldhouse"    = "#005344",
-  "Coolhouse"    = "#007d65",
-  "Transitional" = "#c8c7c7",
-  "Warmhouse"    = "#b57a51",
-  "Hothouse"     = "#95484b"
+  "Coldhouse"    = "#B2CCC7",
+  "Coolhouse"    = "#B3D8D0",
+  "Transitional" = "#E4E4E4",
+  "Warmhouse"    = "#DECABC",
+  "Hothouse"     = "#D6B6B7"
 )
 
 hemi_cols <- c(
@@ -130,6 +142,10 @@ lat_zone_lookup <- lat_bins %>%
     )
   ) %>%
   select(bin, abs_lat_bin_mid, lat_zone)
+
+eligible_abs_lat_bins <- sort(
+  unique(lat_zone_lookup$abs_lat_bin_mid)
+)
 
 all_stage_hemi <- expand.grid(
   bin_midpoint = sort(unique(rich_raw$bin_midpoint[rich_raw$bin_midpoint <= 486.8500])),
@@ -374,7 +390,7 @@ empty_hemi_qc <- function() {
   )
 }
 
-classify_stage_hemisphere_qc <- function(rich_for_qc, qc_row) {
+classify_stage_hemisphere_qc <- function(rich_for_qc, qc_row,rich_for_sampling = rich_for_qc) {
   
   if (!nrow(rich_for_qc)) return(empty_hemi_qc())
   
@@ -402,9 +418,13 @@ classify_stage_hemisphere_qc <- function(rich_for_qc, qc_row) {
     ) %>%
     left_join(adj, by = c("bin_midpoint", "hemisphere"))
   
-  latstats <- rich_for_qc %>%
+  latstats <- rich_for_sampling %>%
     count(bin_midpoint, hemisphere, abs_lat_bin_mid, name = "n_cells_latbin") %>%
     group_by(bin_midpoint, hemisphere) %>%
+    complete(
+      abs_lat_bin_mid = eligible_abs_lat_bins,
+      fill = list(n_cells_latbin = 0L)
+    ) %>%
     summarise(
       k_min = min(n_cells_latbin),
       k_max = max(n_cells_latbin),
@@ -495,13 +515,12 @@ fit_cell_ols_safe <- function(df, y_col = "qD_normalized", x_col = "abs_lat") {
   
   slope <- as.numeric(cf[x_col, "Estimate"])
   se <- as.numeric(cf[x_col, "Std. Error"])
-  
   tibble(
     slope = slope,
     intercept = as.numeric(cf["(Intercept)", "Estimate"]),
     slope_se = se,
-    slope_lower_95 = slope - 1.96 * se,
-    slope_upper_95 = slope + 1.96 * se,
+    slope_lower_95 = slope - 1.96*se,
+    slope_upper_95 = slope + 1.96*se,
     p_value = as.numeric(cf[x_col, "Pr(>|t|)"]),
     r_squared = as.numeric(sm$r.squared),
     n_cells_model = nrow(df)
@@ -539,7 +558,7 @@ run_balanced_resampling_ols <- function(df) {
   
   map_dfr(seq_len(n_resamples), function(i) {
     sampled <- bind_rows(lapply(split_df, function(z) {
-      z[sample(seq_len(nrow(z)), size = k, replace = FALSE), , drop = FALSE]
+      z[sample(seq_len(nrow(z)), size = k, replace =  FALSE), , drop = FALSE]
     }))
     
     fit_cell_ols_safe(sampled) %>%
@@ -608,24 +627,74 @@ calc_percentile_slopes_base <- function(rich_for_slope, slope_filter_row) {
       group_by(bin_midpoint, stage, hemisphere) %>%
       group_modify(~ {
         df <- .x %>%
-          filter(!is.na(.data[[q]]), !is.na(abs_lat_bin_mid))
+          filter(
+            !is.na(.data[[q]]),
+            !is.na(abs_lat_bin_mid)
+          )
         
-        if (nrow(df) < 2 || n_distinct(df$abs_lat_bin_mid) < 2) {
-          return(tibble(slope = NA_real_, intercept = NA_real_))
+        # 至少需要3个纬度带，OLS才能估计残差和置信区间
+        if (
+          nrow(df) < 3 ||
+          n_distinct(df$abs_lat_bin_mid) < 3
+        ) {
+          return(tibble(
+            slope = NA_real_,
+            intercept = NA_real_,
+            slope_se = NA_real_,
+            slope_lower_95 = NA_real_,
+            slope_upper_95 = NA_real_,
+            p_value = NA_real_,
+            r_squared = NA_real_,
+            n_cells_model = nrow(df)
+          ))
         }
         
         mod <- tryCatch(
-          lm(as.formula(sprintf("%s ~ abs_lat_bin_mid", q)), data = df),
+          lm(
+            as.formula(sprintf("%s ~ abs_lat_bin_mid", q)),
+            data = df
+          ),
           error = function(e) NULL
         )
         
         if (is.null(mod)) {
-          return(tibble(slope = NA_real_, intercept = NA_real_))
+          return(tibble(
+            slope = NA_real_,
+            intercept = NA_real_,
+            slope_se = NA_real_,
+            slope_lower_95 = NA_real_,
+            slope_upper_95 = NA_real_,
+            p_value = NA_real_,
+            r_squared = NA_real_,
+            n_cells_model = nrow(df)
+          ))
         }
         
+        sm <- summary(mod)
+        cf <- sm$coefficients
+        
+        slope_ci <- tryCatch(
+          confint(
+            mod,
+            parm = "abs_lat_bin_mid",
+            level = 0.95
+          ),
+          error = function(e) c(NA_real_, NA_real_)
+        )
+        
         tibble(
-          slope = as.numeric(coef(mod)[2]),
-          intercept = as.numeric(coef(mod)[1])
+          slope = unname(coef(mod)["abs_lat_bin_mid"]),
+          intercept = unname(coef(mod)["(Intercept)"]),
+          slope_se = unname(
+            cf["abs_lat_bin_mid", "Std. Error"]
+          ),
+          slope_lower_95 = unname(slope_ci[1]),
+          slope_upper_95 = unname(slope_ci[2]),
+          p_value = unname(
+            cf["abs_lat_bin_mid", "Pr(>|t|)"]
+          ),
+          r_squared = unname(sm$r.squared),
+          n_cells_model = nrow(df)
         )
       }) %>%
       ungroup() %>%
@@ -660,12 +729,15 @@ calc_percentile_slopes_base <- function(rich_for_slope, slope_filter_row) {
       intercept = safe_numeric(intercept),
       slope_mean = NA_real_,
       slope_sd = NA_real_,
-      slope_lower_95 = NA_real_,
-      slope_upper_95 = NA_real_,
-      slope_se = NA_real_,
-      p_value = NA_real_,
-      r_squared = NA_real_,
-      n_cells_model = NA_real_,
+      
+      # 保留前面OLS计算得到的结果
+      slope_lower_95 = safe_numeric(slope_lower_95),
+      slope_upper_95 = safe_numeric(slope_upper_95),
+      slope_se = safe_numeric(slope_se),
+      p_value = safe_numeric(p_value),
+      r_squared = safe_numeric(r_squared),
+      n_cells_model = safe_numeric(n_cells_model),
+      
       n_resamples_valid = NA_real_,
       prop_negative = NA_real_,
       prop_positive = NA_real_,
@@ -731,17 +803,33 @@ run_one_slope_filter <- function(slope_filter_row) {
   
   slope_filter_row <- as_tibble(slope_filter_row)
   
-  message("Calculating slopes for: ", slope_filter_row$slope_filter_id[[1]])
+  filter_id <- slope_filter_row$slope_filter_id[[1]]
   
-  rich_for_slope <- prepare_richness_data(rich_raw, slope_filter_row) %>%
+  rich_for_slope <- prepare_richness_data(
+    rich_raw,
+    slope_filter_row
+  ) %>%
     mutate(
-      slope_filter_id = slope_filter_row$slope_filter_id[[1]],
+      slope_filter_id = filter_id,
       data_role = "slope"
     )
   
-  perc <- calc_percentile_slopes_base(rich_for_slope, slope_filter_row)
-  allc <- calc_percell_all_slopes_base(rich_for_slope, slope_filter_row)
-  bal <- calc_percell_balanced_slopes_base(rich_for_slope, slope_filter_row)
+  perc <- calc_percentile_slopes_base(
+    rich_for_slope,
+    slope_filter_row
+  )
+  
+  allc <- calc_percell_all_slopes_base(
+    rich_for_slope,
+    slope_filter_row
+  )
+  
+  set.seed(filter_seeds[[filter_id]])
+  
+  bal <- calc_percell_balanced_slopes_base(
+    rich_for_slope,
+    slope_filter_row
+  )
   
   list(
     rich_for_slope = rich_for_slope,
@@ -749,7 +837,6 @@ run_one_slope_filter <- function(slope_filter_row) {
     raw_resamples = if (save_raw_resamples) bal$raw else NULL
   )
 }
-
 run_one_qc_label <- function(qc_row, rich_for_slope_by_filter) {
   
   qc_row <- as_tibble(qc_row)
@@ -775,7 +862,7 @@ run_one_qc_label <- function(qc_row, rich_for_slope_by_filter) {
     k_use
   )
   
-  hemi_qc <- classify_stage_hemisphere_qc(rich_for_qc, qc_row)
+  hemi_qc <- classify_stage_hemisphere_qc(rich_for_qc, qc_row,rich_for_slope)
   hemi_qc_full <- complete_hemi_qc(hemi_qc, qc_row)
   
   list(
@@ -943,6 +1030,61 @@ wilcox_QC_results <- expand_grid(method_specs, qc_name = qc_scenarios$qc_name) %
   ungroup() %>%
   arrange(method_group, slope_metric, qc_name, p_adjusted)
 
+# Run the same climate-state comparisons separately within each hemisphere.
+# BH adjustment is performed within each method x QC scenario x hemisphere.
+wilcox_QC_results_by_hemisphere <- expand_grid(
+  method_specs,
+  qc_name = qc_scenarios$qc_name,
+  hemisphere = c("Northern", "Southern")
+) %>%
+  pmap_dfr(function(method_group, slope_metric, qc_name, hemisphere) {
+    
+    df <- LDG_slope_all_QC_climate %>%
+      filter(
+        method_group == !!method_group,
+        slope_metric == !!slope_metric,
+        qc_name == !!qc_name,
+        .data$hemisphere == .env$hemisphere,
+        label == "good",
+        !is.na(slope),
+        climate_state %in% climate_levels
+      )
+    
+    map_df(climate_pairs, function(pair) {
+      
+      g1 <- df %>% filter(climate_state == pair[1]) %>% pull(slope)
+      g2 <- df %>% filter(climate_state == pair[2]) %>% pull(slope)
+      wt <- safe_wilcox(g1, g2)
+      m1 <- safe_median(g1)
+      m2 <- safe_median(g2)
+      
+      tibble(
+        method_group = method_group,
+        slope_metric = slope_metric,
+        qc_name = qc_name,
+        hemisphere = hemisphere,
+        group1 = pair[1],
+        group2 = pair[2],
+        n1 = sum(!is.na(safe_numeric(g1))),
+        n2 = sum(!is.na(safe_numeric(g2))),
+        median1 = m1,
+        median2 = m2,
+        median_diff = ifelse(is.na(m1) | is.na(m2), NA_real_, m1 - m2),
+        p_value = wt$p_value,
+        w_statistic = wt$w_statistic,
+        iqr1 = safe_iqr(g1),
+        iqr2 = safe_iqr(g2),
+        test_note = wt$test_note
+      )
+    })
+  }) %>%
+  group_by(method_group, slope_metric, qc_name, hemisphere) %>%
+  mutate(
+    p_adjusted = if (all(is.na(p_value))) NA_real_ else p.adjust(p_value, method = "BH")
+  ) %>%
+  ungroup() %>%
+  arrange(method_group, slope_metric, qc_name, hemisphere, p_adjusted)
+
 retention_summary <- LDG_slope_all_QC %>%
   group_by(
     method_group,
@@ -975,8 +1117,62 @@ climate_n_QC <- LDG_slope_all_QC_climate %>%
     iqr_slope = safe_iqr(slope),
     .groups = "drop"
   )
+wilcox_QC_results <- wilcox_QC_results %>%
+  mutate(
+    qc_filter = sub("_k[0-9]+_.*$", "", qc_name),
+    qc_filter_order = match(
+      qc_filter,
+      c("occurrence5", "occurrence10", "collection5", "collection10")
+    ),
+    k_order = as.integer(sub("^.*_k([0-9]+)_.*$", "\\1", qc_name)),
+    zone_order = if_else(
+      grepl("_tropical_temperate_polar$", qc_name),
+      2L,
+      1L
+    )
+  ) %>%
+  arrange(
+    method_group,
+    slope_metric,
+    qc_filter_order,
+    k_order,
+    zone_order,
+    p_adjusted
+  ) %>%
+  select(-qc_filter, -qc_filter_order, -k_order, -zone_order)
+
+wilcox_QC_results_by_hemisphere <- wilcox_QC_results_by_hemisphere %>%
+  mutate(
+    hemisphere = factor(hemisphere, levels = c("Northern", "Southern")),
+    qc_filter = sub("_k[0-9]+_.*$", "", qc_name),
+    qc_filter_order = match(
+      qc_filter,
+      c("occurrence5", "occurrence10", "collection5", "collection10")
+    ),
+    k_order = as.integer(sub("^.*_k([0-9]+)_.*$", "\\1", qc_name)),
+    zone_order = if_else(
+      grepl("_tropical_temperate_polar$", qc_name),
+      2L,
+      1L
+    )
+  ) %>%
+  arrange(
+    method_group,
+    slope_metric,
+    qc_filter_order,
+    k_order,
+    zone_order,
+    hemisphere,
+    p_adjusted
+  ) %>%
+  select(-qc_filter, -qc_filter_order, -k_order, -zone_order)
 
 write.csv(wilcox_QC_results, file.path(out_dir, paste0(analysis_tag, "_wilcoxon_ALL_methods.csv")), row.names = FALSE)
+write.csv(
+  wilcox_QC_results_by_hemisphere,
+  file.path(out_dir, paste0(analysis_tag, "_wilcoxon_ALL_methods_by_hemisphere.csv")),
+  row.names = FALSE
+)
 write.csv(retention_summary, file.path(out_dir, paste0(analysis_tag, "_retention_summary_ALL_methods.csv")), row.names = FALSE)
 write.csv(climate_n_QC, file.path(out_dir, paste0(analysis_tag, "_climate_n_ALL_methods.csv")), row.names = FALSE)
 
@@ -1324,20 +1520,20 @@ draw_boxplot <- function(method_use, metric_use, qc_use = baseline_qc) {
     left_join(state_n_labels %>% select(climate_state, state_with_n), by = "climate_state") %>%
     mutate(state_with_n = factor(state_with_n, levels = state_n_labels$state_with_n))
   
-  slope_flag <- slope_data_filtered %>%
-    group_by(state_with_n, slope_type) %>%
-    mutate(
-      q1 = quantile(slope_value, 0.25, na.rm = TRUE),
-      q3 = quantile(slope_value, 0.75, na.rm = TRUE),
-      iqr = q3 - q1,
-      lower = q1 - 1.5 * iqr,
-      upper = q3 + 1.5 * iqr,
-      is_outlier = slope_value < lower | slope_value > upper
-    ) %>%
-    ungroup()
-  
-  outlier_data <- slope_flag %>%
-    mutate(slope_value = ifelse(is_outlier, slope_value, NA_real_))
+  # slope_flag <- slope_data_filtered %>%
+  #   group_by(state_with_n, slope_type) %>%
+  #   mutate(
+  #     q1 = quantile(slope_value, 0.25, na.rm = TRUE),
+  #     q3 = quantile(slope_value, 0.75, na.rm = TRUE),
+  #     iqr = q3 - q1,
+  #     lower = q1 - 1.5 * iqr,
+  #     upper = q3 + 1.5 * iqr,
+  #     is_outlier = slope_value < lower | slope_value > upper
+  #   ) %>%
+  #   ungroup()
+  # 
+  # outlier_data <- slope_flag %>%
+  #   mutate(slope_value = ifelse(is_outlier, slope_value, NA_real_))
   
   y_min_val <- min(slope_data_filtered$slope_value, na.rm = TRUE)
   y_max_val <- max(slope_data_filtered$slope_value, na.rm = TRUE)
@@ -1347,27 +1543,37 @@ draw_boxplot <- function(method_use, metric_use, qc_use = baseline_qc) {
     y_max_val <- 1
   }
   
-  p <- ggplot(slope_flag, aes(x = state_with_n, y = slope_value, fill = slope_type)) +
-    annotate("rect", xmin = -Inf, xmax = Inf, ymin = -0.1, ymax = 0.1, fill = "lightblue", alpha = 0.3) +
-    geom_hline(yintercept = 0, color = "black", linewidth = 0.8, linetype = "dashed") +
-    geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.75)) +
-    geom_jitter(
-      data = subset(slope_flag, !is_outlier),
-      shape = 21,
-      size = 1,
-      alpha = 0.6,
-      position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.75),
-      show.legend = FALSE
+  p <- ggplot(
+    slope_data_filtered,
+    aes(x = state_with_n, y = slope_value, fill = slope_type)
+  ) +
+    annotate(
+      "rect",
+      xmin = -Inf, xmax = Inf,
+      ymin = -0.1, ymax = 0.1,
+      fill = "lightblue", alpha = 0.3
     ) +
-    geom_point(
-      data = outlier_data,
-      shape = 23,
-      size = 1,
-      stroke = 0.6,
+    geom_hline(
+      yintercept = 0,
       color = "black",
-      position = position_dodge(width = 0.75),
-      show.legend = FALSE
+      linewidth = 0.8,
+      linetype = "dashed"
     ) +
+    geom_boxplot(
+      outlier.shape = NA,
+      position = position_dodge(width = 0.75)
+    ) +
+    # geom_point(
+    #   shape = 21,
+    #   size = 1,
+    #   alpha = 0.6,
+    #   color = "black",
+    #   position = position_jitterdodge(
+    #     jitter.width = 0.2,
+    #     dodge.width = 0.75
+    #   ),
+    #   show.legend = FALSE
+    # ) +
     scale_fill_manual(values = hemi_cols, name = "Hemisphere") +
     coord_cartesian(clip = "off", xlim = c(1, 5), ylim = c(y_min_val, y_max_val)) +
     labs(
@@ -1397,6 +1603,7 @@ draw_boxplot <- function(method_use, metric_use, qc_use = baseline_qc) {
     ) +
     theme_minimal() +
     theme(
+      panel.grid = element_blank(),
       axis.title = element_text(size = 14),
       axis.text = element_text(size = 12),
       axis.ticks = element_line(color = "black", linewidth = 0.6),
@@ -1587,6 +1794,12 @@ draw_time_series <- function(method_use, metric_use, qc_use = baseline_qc) {
         hemisphere == "Southern" ~ "Southern",
         TRUE ~ NA_character_
       ),
+      uncertain = case_when(
+        label == "bad" ~ NA,
+        is.na(slope_lower_95) | is.na(slope_upper_95) ~ NA,
+        slope_lower_95 <= 0 & slope_upper_95 >= 0 ~ TRUE,
+        TRUE ~ FALSE
+      ),
       slope_value = ifelse(label == "bad", NA_real_, slope),
       slope_lower_plot = ifelse(label == "bad", NA_real_, safe_numeric(slope_lower_95)),
       slope_upper_plot = ifelse(label == "bad", NA_real_, safe_numeric(slope_upper_95))
@@ -1600,6 +1813,8 @@ draw_time_series <- function(method_use, metric_use, qc_use = baseline_qc) {
   show_ci <- method_use %in% c(
     "per_cell_balanced_resampling_OLS",
     "per_cell_all_cells_OLS"
+    # ,
+    # "percentile_latbin_OLS"
   ) &&
     any(!is.na(slope_data$slope_lower_plot)) &&
     any(!is.na(slope_data$slope_upper_plot))
@@ -1612,11 +1827,11 @@ draw_time_series <- function(method_use, metric_use, qc_use = baseline_qc) {
   x_min_val <- min(time_bins_use$min_ma, na.rm = TRUE)
   
   if (show_ci) {
-    y_min_val <- min(c(slope_data$slope_value, slope_data$slope_lower_plot), na.rm = TRUE) * 1.3
-    y_max_val <- max(c(slope_data$slope_value, slope_data$slope_upper_plot), na.rm = TRUE) * 1.3
+    y_min_val <- min(c(slope_data$slope_value, slope_data$slope_lower_plot), na.rm = TRUE) * 1.01
+    y_max_val <- max(c(slope_data$slope_value, slope_data$slope_upper_plot), na.rm = TRUE) * 1.2
   } else {
-    y_min_val <- min(slope_data$slope_value, na.rm = TRUE) * 1.3
-    y_max_val <- max(slope_data$slope_value, na.rm = TRUE) * 1.3
+    y_min_val <- min(slope_data$slope_value, na.rm = TRUE) * 1.01
+    y_max_val <- max(slope_data$slope_value, na.rm = TRUE) * 1.2
   }
   
   if (!is.finite(y_min_val) || !is.finite(y_max_val) || y_min_val == y_max_val) {
@@ -1637,7 +1852,7 @@ draw_time_series <- function(method_use, metric_use, qc_use = baseline_qc) {
         fill = I(climate_color)
       ),
       inherit.aes = FALSE,
-      alpha = 0.6,
+      # alpha = 0.6,
       colour = NA
     )
   )
@@ -1678,27 +1893,31 @@ draw_time_series <- function(method_use, metric_use, qc_use = baseline_qc) {
     
     if (show_ci) {
       p <- p +
-        geom_ribbon(
+        # geom_ribbon(
+        #   aes(ymin = slope_lower_plot, ymax = slope_upper_plot),
+        #   fill = unname(hemi_col),
+        #   alpha = 0.22,
+        #   colour = NA,
+        #   na.rm = TRUE,
+        #   show.legend = FALSE
+        # )
+        geom_linerange(
           aes(ymin = slope_lower_plot, ymax = slope_upper_plot),
-          fill = unname(hemi_col),
-          alpha = 0.22,
-          colour = NA,
-          na.rm = TRUE,
-          show.legend = FALSE
+          colour = unname(hemi_col), alpha = 0.8, width = 2, linewidth = 0.75, na.rm = TRUE,show.legend = FALSE
         )
     }
     
     p <- p +
       geom_line(linewidth = 1, color = unname(hemi_col), na.rm = TRUE) +
       geom_point(
-        aes(shape = abs(slope_value) < 0.1),
+        shape=21,
         size = 2,
         stroke = 0.55,
         color = "black",
         fill = unname(hemi_col),
         na.rm = TRUE
       ) +
-      scale_shape_manual(values = c(`TRUE` = 1, `FALSE` = 21), na.translate = FALSE) +
+      # scale_shape_manual(values = c(`TRUE` = 1, `FALSE` = 21), na.translate = FALSE) +
       geom_rect(
         aes(
           xmin = x_min_val,
@@ -1744,20 +1963,22 @@ draw_time_series <- function(method_use, metric_use, qc_use = baseline_qc) {
     
     if (show_x) {
       p <- p +
-        coord_geo(
-          xlim = c(x_max_val, 0),
-          pos = "bottom",
-          dat = list("periods", "epochs"),
-          height = unit(1.5, "lines"),
-          expand = FALSE
-        )
+        coord_geo(xlim =c(x_max_val,0),
+                  pos = as.list(rep("bottom", 2)),
+                  dat = list("periods", "era"),
+                  height = list(unit(1.45, "lines"), unit(1.45, "lines")),
+                  #fill="darkgrey",
+                  lab_color="black",
+                  rot = list(0, 0), 
+                  size = list(4, 4), 
+                  abbrv =list(TRUE,FALSE))
     }
     
     p
   }
   
-  P_north <- plot_one_hemi("Northern", hemi_cols["Northern"], "A", FALSE)
-  P_south <- plot_one_hemi("Southern", hemi_cols["Southern"], "B", TRUE)
+  P_north <- plot_one_hemi("Northern", hemi_cols["Northern"], "(a)", FALSE)
+  P_south <- plot_one_hemi("Southern", hemi_cols["Southern"], "(b)", TRUE)
   
   climate_bar <- ggplot(
     data.frame(climate_state = factor(climate_levels, levels = climate_levels)),
@@ -1793,7 +2014,7 @@ draw_time_series <- function(method_use, metric_use, qc_use = baseline_qc) {
   
   safe_name <- clean_name(paste(method_use, metric_use, qc_use, "time_series", sep = "_"))
   
-  ggsave(file.path(fig_dir, "time_series_jpg", paste0(analysis_tag, "_", safe_name, ".jpg")), p_final, width = 8, height = 7, dpi = 900, type = "cairo")
+  ggsave(file.path(fig_dir, "time_series_jpg", paste0(analysis_tag, "_", safe_name, ".jpg")), p_final, width = 8, height = 7, dpi = 300, type = "cairo")
   ggsave(file.path(fig_dir, "time_series_pdf", paste0(analysis_tag, "_", safe_name, ".pdf")), p_final, width = 8, height = 7, dpi = 300)
   
   p_final
@@ -1952,6 +2173,7 @@ paired_MAIN_df <- LDG_slope_all_QC %>%
     k_cv_diff = abs(k_cv_Northern - k_cv_Southern),
     k_cv_diff_signed = k_cv_Northern - k_cv_Southern,
     k_median_asym = abs(log((k_median_Northern + 1) / (k_median_Southern + 1))),
+    k_median_diff = abs(k_median_Northern - k_median_Southern),
     k_median_diff_signed = k_median_Northern - k_median_Southern,
     k_sample_asym = abs(log((k_sample_Northern + 1) / (k_sample_Southern + 1))),
     k_sample_diff_signed = k_sample_Northern - k_sample_Southern,
@@ -1980,6 +2202,7 @@ NH_SH_cor_MAIN <- paired_MAIN_df %>%
     cor_one(.x, "sampling_profile_dissim", "slope_diff_abs", "|NH-SH slope| vs sampling-profile dissimilarity"),
     cor_one(.x, "k_cv_diff", "slope_diff_abs", "|NH-SH slope| vs k_cv difference"),
     cor_one(.x, "k_median_asym", "slope_diff_abs", "|NH-SH slope| vs k_median asymmetry"),
+    cor_one(.x, "k_median_diff", "slope_diff_abs", "|NH-SH slope| vs k_median difference"),
     cor_one(.x, "sampling_profile_dissim", "slope_diff_signed", "NH-SH slope vs sampling-profile dissimilarity"),
     cor_one(.x, "k_cv_diff_signed", "slope_diff_signed", "NH-SH slope vs signed k_cv difference"),
     cor_one(.x, "k_median_diff_signed", "slope_diff_signed", "NH-SH slope vs signed k_median difference")
@@ -2088,13 +2311,15 @@ draw_sampling_dissim_time_series_by_filter <- function(slope_filter_use) {
       breaks = pretty(c(0, y_max_val), n = 5),
       expand = c(0, 0)
     ) +
-    coord_geo(
-      xlim = c(x_max_val, 0),
-      pos = "bottom",
-      dat = list("periods", "epochs"),
-      height = unit(1.5, "lines"),
-      expand = FALSE
-    ) +
+    coord_geo(xlim =c(x_max_val,0),
+              pos = as.list(rep("bottom", 2)),
+              dat = list("periods", "era"),
+              height = list(unit(1.35, "lines"), unit(1.35, "lines")),
+              #fill="darkgrey",
+              lab_color="black",
+              rot = list(0, 0), 
+              # size = list(4, 4), 
+              abbrv =list(TRUE,FALSE)) +
     labs(
       x = "Time (Ma)",
       y = "Sampling-profile dissimilarity",
@@ -2262,7 +2487,7 @@ draw_one_nh_sh_main <- function(method_use, metric_use, qc_use) {
       x = "Northern Hemisphere slope",
       y = "Southern Hemisphere slope",
       fill = "Era",
-      tag = "A"
+      tag = "(a)"
     ) +
     nhsh_theme
   
@@ -2273,7 +2498,7 @@ draw_one_nh_sh_main <- function(method_use, metric_use, qc_use) {
       x = "NH-SH sampling-profile dissimilarity",
       y = "|Northern slope - Southern slope|",
       fill = "Era",
-      tag = "B"
+      tag = "(b)"
     ) +
     nhsh_theme
   

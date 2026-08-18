@@ -1,5 +1,0 @@
-"hemisphere","label","n_time_bins","n_with_high_lat_data","prop_time_bins_with_high_lat_data","median_prop_cells_high_lat","mean_prop_cells_high_lat","median_prop_high_lat_bins_observed","mean_prop_high_lat_bins_observed"
-"Northern","bad",22,4,0.181818181818182,0,0.035663021189337,0,0.227272727272727
-"Northern","good",65,40,0.615384615384615,0.0344827586206897,0.0763499549658211,1,0.661538461538462
-"Southern","bad",18,10,0.555555555555556,0.104166666666667,0.198126102292769,1,0.611111111111111
-"Southern","good",66,41,0.621212121212121,0.0761973875181422,0.117507186819339,1,0.666666666666667

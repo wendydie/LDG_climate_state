@@ -37,14 +37,20 @@ climate_levels <- c(
   "Hothouse"
 )
 
+# climate_colors <- c(
+#   "Coldhouse"    = "#005344",
+#   "Coolhouse"    = "#007d65",
+#   "Transitional" = "#c8c7c7",
+#   "Warmhouse"    = "#b57a51",
+#   "Hothouse"     = "#95484b"
+# )
 climate_colors <- c(
-  "Coldhouse"    = "#005344",
-  "Coolhouse"    = "#007d65",
-  "Transitional" = "#c8c7c7",
-  "Warmhouse"    = "#b57a51",
-  "Hothouse"     = "#95484b"
+  "Coldhouse"    = "#B2CCC7",
+  "Coolhouse"    = "#B3D8D0",
+  "Transitional" = "#E4E4E4",
+  "Warmhouse"    = "#DECABC",
+  "Hothouse"     = "#D6B6B7"
 )
-
 hemi_cols <- c(
   "Northern" = "#0072B2",
   "Southern" = "#E69F00"
@@ -479,7 +485,15 @@ slope_data <- slope_cli_df %>%
       hemisphere == "Southern" ~ "Southern",
       TRUE ~ NA_character_
     ),
-    slope_value = ifelse(label == "bad", NA_real_, slope)
+    uncertain = case_when(
+      label == "bad" ~ NA,
+      is.na(slope_lower_95) | is.na(slope_upper_95) ~ NA,
+      slope_lower_95 <= 0 & slope_upper_95 >= 0 ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    slope_value = ifelse(label == "bad", NA_real_, slope),
+    slope_lower_plot = ifelse(label == "bad", NA_real_, slope_lower_95),
+    slope_upper_plot = ifelse(label == "bad", NA_real_, slope_upper_95)
   )
 
 x_max_val <- max(time_bins$max_ma, na.rm = TRUE)
@@ -490,14 +504,14 @@ major_boundaries_plot <- major_boundaries[
 ]
 
 y_min_val <- min(
-  c(slope_data$slope_value, slope_data$slope_lower_95),
+  c(slope_data$slope_value, slope_data$slope_lower_plot),
   na.rm = TRUE
-) * 1.2
+) * 1.01
 
 y_max_val <- max(
-  c(slope_data$slope_value, slope_data$slope_upper_95),
+  c(slope_data$slope_value, slope_data$slope_upper_plot),
   na.rm = TRUE
-) * 1.2
+) * 1.1
 
 if (
   y_min_val == y_max_val ||
@@ -507,6 +521,8 @@ if (
   y_min_val <- -1
   y_max_val <- 1
 }
+
+y_breaks <- pretty(c(y_min_val, y_max_val), n = 5)
 
 climate_shade_layer <- list(
   geom_rect(
@@ -519,15 +535,19 @@ climate_shade_layer <- list(
       fill = I(climate_color)
     ),
     inherit.aes = FALSE,
-    alpha = 0.55,
     colour = NA
   )
 )
 
-plot_slope_ts <- function(df, hemi, col, tag_lab, show_x = FALSE) {
-  
-  x_lab <- if (show_x) "Time (Ma)" else NULL
-  
+plot_slope_ts <- function(
+  df,
+  hemi,
+  col,
+  tag_lab,
+  show_top_bar = FALSE,
+  show_x_tick = FALSE,
+  bottom_space = 0
+) {
   p <- ggplot(
     filter(df, slope_type == hemi),
     aes(x = bin_midpoint, y = slope_value)
@@ -538,62 +558,82 @@ plot_slope_ts <- function(df, hemi, col, tag_lab, show_x = FALSE) {
       color = "black",
       linewidth = 0.35,
       alpha = 0.7
-    ) +
+    )
+
+  if (show_top_bar) {
+    p <- p +
+      geom_rect(
+        data = climate_states,
+        aes(
+          xmin = bottom,
+          xmax = top,
+          ymin = y_max_val,
+          ymax = y_max_val * 1.1
+        ),
+        fill = I(climate_states$climate_color),
+        color = "black",
+        linewidth = 0.3,
+        inherit.aes = FALSE
+      )
+  }
+
+  p <- p +
     geom_hline(
       yintercept = 0,
       color = "black",
       linewidth = 0.4,
       linetype = "dashed"
     ) +
-    geom_ribbon(
+    geom_linerange(
       aes(
-        ymin = slope_lower_95,
-        ymax = slope_upper_95
+        ymin = slope_lower_plot,
+        ymax = slope_upper_plot
       ),
-      fill = unname(col),
-      alpha = 0.20,
-      colour = NA,
+      colour = unname(col),
+      alpha = 0.8,
+      linewidth = 0.75,
       na.rm = TRUE
     ) +
     geom_line(
-      linewidth = 0.9,
+      linewidth = 1,
       color = unname(col),
       na.rm = TRUE
     ) +
     geom_point(
-      aes(shape = abs(slope_value) < 0.1),
+      shape=21,
       size = 2,
       stroke = 0.5,
       color = "black",
       fill = unname(col),
       na.rm = TRUE
     ) +
-    scale_shape_manual(
-      values = c(`TRUE` = 1, `FALSE` = 21),
-      na.translate = FALSE
-    ) +
-    geom_rect(
-      aes(
-        xmin = x_min_val,
-        xmax = x_max_val,
-        ymin = y_min_val,
-        ymax = y_max_val * 1.1
-      ),
-      color = "black",
+    # scale_shape_manual(
+    #   values = c(`TRUE` = 1, `FALSE` = 21),
+    #   na.translate = FALSE
+    # ) +
+    annotate(
+      "rect",
+      xmin = x_min_val,
+      xmax = x_max_val,
+      ymin = y_min_val,
+      ymax = y_max_val * 1.1,
       fill = NA,
+      color = "black",
       linewidth = 0.8
     ) +
     scale_x_reverse(
-      name = x_lab,
+      name = NULL,
       limits = c(x_max_val, 0),
       breaks = seq(500, 0, -50),
       expand = c(0, 0)
     ) +
     scale_y_continuous(
       limits = c(y_min_val, y_max_val * 1.1),
+      breaks = y_breaks,
       expand = c(0, 0)
     ) +
     labs(
+      x = NULL,
       y = "Slope value",
       tag = tag_lab,
       subtitle = paste(hemi, "Hemisphere")
@@ -601,56 +641,95 @@ plot_slope_ts <- function(df, hemi, col, tag_lab, show_x = FALSE) {
     theme_minimal() +
     theme(
       panel.grid = element_blank(),
-      axis.title = element_text(size = 14),
-      axis.text = element_text(size = 14),
-      axis.ticks = element_line(color = "black", linewidth = 0.5),
+      axis.title.x = element_blank(),
+      axis.title.y = element_text(size = 14),
+      axis.text.y = element_text(size = 14),
+      axis.ticks.y = element_line(color = "black", linewidth = 0.5),
       plot.subtitle = element_text(size = 12, face = "bold"),
       plot.tag = element_text(size = 13, face = "bold"),
       plot.tag.position = c(0.01, 0.98),
-      legend.position = "none"
+      legend.position = "none",
+      plot.margin = margin(0, 0, bottom_space, 0)
     )
-  
-  if (!show_x) {
+
+  if (show_x_tick) {
     p <- p +
       theme(
-        axis.title.x = element_blank(),
-        axis.text.x = element_blank()
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_line(color = "black", linewidth = 0.5)
       )
   } else {
     p <- p +
-      coord_geo(
-        xlim = c(x_max_val, 0),
-        pos = "bottom",
-        dat = list("periods", "epochs"),
-        height = unit(1.5, "lines"),
-        expand = FALSE
+      theme(
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
       )
   }
-  
+
   p
 }
 
-P_north <- plot_slope_ts(
+P_north_backcolor <- plot_slope_ts(
   slope_data,
   "Northern",
   hemi_cols["Northern"],
-  "A",
-  show_x = FALSE
+  "(a)",
+  show_top_bar = TRUE,
+  show_x_tick = TRUE,
+  bottom_space = 8
 )
 
-P_south <- plot_slope_ts(
+P_south_backcolor <- plot_slope_ts(
   slope_data,
   "Southern",
   hemi_cols["Southern"],
-  "B",
-  show_x = TRUE
+  "(b)",
+  show_top_bar = FALSE,
+  show_x_tick = FALSE,
+  bottom_space = 0
 )
+
+P_geo <- ggplot(
+  data.frame(x = c(x_max_val, 0), y = c(0, 0)),
+  aes(x = x, y = y)
+) +
+  geom_blank() +
+  scale_x_reverse(
+    name = "Time (Ma)",
+    limits = c(x_max_val, 0),
+    breaks = seq(500, 0, -50),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(limits = c(0, 0.01), expand = c(0, 0)) +
+  coord_geo(
+    xlim = c(x_max_val, 0),
+    pos = "bottom",
+    dat = list("periods", "epochs"),
+    height = unit(1.45, "lines"),
+    expand = FALSE
+  ) +
+  labs(x = "Time (Ma)", y = NULL, tag = NULL) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_text(size = 14, margin = margin(t = 2)),
+    axis.text.x = element_text(size = 14),
+    axis.ticks.x = element_line(color = "black", linewidth = 0.5),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    plot.tag = element_blank(),
+    legend.position = "none",
+    plot.margin = margin(0, 0, 6, 0)
+  )
 
 climate_bar <- ggplot(
   data.frame(climate_state = factor(climate_levels, levels = climate_levels)),
-  aes(x = 0, y = 0, fill = climate_state)
+  aes(x = climate_state, y = 1, fill = climate_state)
 ) +
-  geom_point(shape = 22, size = 5, alpha = 0) +
+  geom_tile(width = 0.8, height = 0.8) +
   scale_fill_manual(
     values = climate_colors,
     name = "Climate state",
@@ -658,22 +737,43 @@ climate_bar <- ggplot(
   ) +
   guides(
     fill = guide_legend(
-      override.aes = list(alpha = 1, shape = 22, size = 5, colour = NA)
+      nrow = 1,
+      override.aes = list(alpha = 1, colour = NA)
     )
   ) +
   theme_void() +
   theme(
     legend.position = "top",
     legend.title = element_text(size = 12, face = "bold"),
-    legend.text = element_text(size = 12)
+    legend.text = element_text(size = 12),
+    legend.margin = margin(4, 0, 4, 0),
+    legend.box.margin = margin(0, 0, 0, 0),
+    plot.margin = margin(0, 0, 0, 0)
   )
 
 climate_legend_grob <- cowplot::get_legend(climate_bar)
 
-slope_vTime_plot <- ((P_north / P_south) / climate_legend_grob) +
-  plot_layout(heights = c(10, 10, 1)) &
+geo_climate_spacer <- cowplot::ggdraw()
+
+aligned_plots <- cowplot::align_plots(
+  P_north_backcolor,
+  P_south_backcolor,
+  P_geo,
+  align = "v",
+  axis = "lr"
+)
+
+slope_vTime_plot <- cowplot::plot_grid(
+  aligned_plots[[1]],
+  aligned_plots[[2]],
+  aligned_plots[[3]],
+  geo_climate_spacer,
+  climate_legend_grob,
+  ncol = 1,
+  rel_heights = c(10, 10, 1.65, 0.45, 1.15)
+) +
   theme(
-    plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm")
+    plot.margin = margin(10, 10, 10, 10)
   )
 
 print(slope_vTime_plot)
@@ -692,8 +792,8 @@ ts_pdf <- sprintf(
   rich_params$n_lat_bins
 )
 
-ggsave(ts_jpg, slope_vTime_plot, width = 8, height = 7, dpi = 600)
-ggsave(ts_pdf, slope_vTime_plot, width = 8, height = 7, dpi = 300)
+ggsave(ts_jpg, slope_vTime_plot, width = 8, height = 7.4, dpi = 900, device = "jpeg")
+ggsave(ts_pdf, slope_vTime_plot, width = 8, height = 7.4, dpi = 300, device = "pdf")
 
 # -----------------------------------------------------------------------
 # 8. Boxplot by climate state
@@ -744,17 +844,14 @@ y_min_box <- min(slope_data_filtered$slope_value, na.rm = TRUE)
 y_max_box <- max(slope_data_filtered$slope_value, na.rm = TRUE)
 
 boxplot <- ggplot(
-  slope_flag,
-  aes(x = state_with_n, y = slope_value, fill = slope_type)
+  slope_data_filtered,
+  aes(state_with_n, slope_value, fill = slope_type)
 ) +
   annotate(
     "rect",
-    xmin = -Inf,
-    xmax = Inf,
-    ymin = -0.1,
-    ymax = 0.1,
-    fill = "lightblue",
-    alpha = 0.3
+    xmin = -Inf, xmax = Inf,
+    ymin = -0.1, ymax = 0.1,
+    fill = "lightblue", alpha = 0.3
   ) +
   geom_hline(
     yintercept = 0,
@@ -764,28 +861,19 @@ boxplot <- ggplot(
   ) +
   geom_boxplot(
     outlier.shape = NA,
-    position = position_dodge(width = 0.75)
+    position = position_dodge(0.75)
   ) +
-  geom_jitter(
-    data = subset(slope_flag, !is_outlier),
-    shape = 21,
-    size = 1,
-    alpha = 0.6,
-    position = position_jitterdodge(
-      jitter.width = 0.2,
-      dodge.width = 0.75
-    ),
-    show.legend = FALSE
-  ) +
-  geom_point(
-    data = outlier_data,
-    shape = 23,
-    size = 1,
-    stroke = 0.6,
-    color = "black",
-    position = position_dodge(width = 0.75),
-    show.legend = FALSE
-  ) +
+  # geom_point(
+  #   shape = 21,
+  #   size = 1,
+  #   alpha = 0.6,
+  #   color = "black",
+  #   position = position_jitterdodge(
+  #     jitter.width = 0.2,
+  #     dodge.width = 0.75
+  #   ),
+  #   show.legend = FALSE
+  # ) +
   scale_fill_manual(
     values = hemi_cols,
     labels = c("Northern", "Southern"),
@@ -822,10 +910,18 @@ boxplot <- ggplot(
     axis.title = element_text(size = 14),
     axis.text = element_text(size = 12),
     axis.ticks = element_line(color = "black", linewidth = 0.6),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+    panel.border = element_rect(
+      color = "black",
+      fill = NA,
+      linewidth = 0.5
+    ),
     legend.position = c(0.02, 0.98),
     legend.justification = c(0, 1),
-    legend.background = element_rect(fill = "white", color = "black", linewidth = 0.5),
+    legend.background = element_rect(
+      fill = "white",
+      color = "black",
+      linewidth = 0.5
+    ),
     legend.key = element_rect(fill = "white"),
     plot.margin = margin(10, 30, 10, 10)
   )

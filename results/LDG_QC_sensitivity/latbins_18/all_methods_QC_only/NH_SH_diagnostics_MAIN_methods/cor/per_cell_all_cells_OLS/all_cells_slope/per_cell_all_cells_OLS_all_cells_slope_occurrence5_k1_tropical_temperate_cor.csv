@@ -1,8 +1,8 @@
 "method_group","slope_metric","qc_name","test","x_var","y_var","n","estimate","p_value"
-"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","NH slope vs SH slope","slope_Northern","slope_Southern",41,0.0130662020905923,0.935377903693331
-"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","|NH-SH slope| vs sampling-profile dissimilarity","sampling_profile_dissim","slope_diff_abs",41,0.173004050863177,0.279390091445682
-"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","|NH-SH slope| vs k_cv difference","k_cv_diff","slope_diff_abs",41,-0.0491289198606272,0.76033997596351
-"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","|NH-SH slope| vs k_median asymmetry","k_median_asym","slope_diff_abs",41,0.000349483916993844,0.998269723145634
-"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","NH-SH slope vs sampling-profile dissimilarity","sampling_profile_dissim","slope_diff_signed",41,-0.0562742280249809,0.726740509112013
-"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","NH-SH slope vs signed k_cv difference","k_cv_diff_signed","slope_diff_signed",41,-0.109756097560976,0.494533297431324
-"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","NH-SH slope vs signed k_median difference","k_median_diff_signed","slope_diff_signed",41,0.0932929317501839,0.561806630873379
+"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","NH slope vs SH slope","slope_Northern","slope_Southern",55,0.235209235209235,0.0838742463204072
+"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","|NH-SH slope| vs sampling-profile dissimilarity","sampling_profile_dissim","slope_diff_abs",55,0.0452380952380952,0.742944380686684
+"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","|NH-SH slope| vs k_cv difference","k_cv_diff","slope_diff_abs",55,-0.01002886002886,0.942069142035277
+"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","|NH-SH slope| vs k_median asymmetry","k_median_asym","slope_diff_abs",55,-0.0070964707745567,0.958990346225328
+"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","NH-SH slope vs sampling-profile dissimilarity","sampling_profile_dissim","slope_diff_signed",55,0.110822510822511,0.420537194681125
+"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","NH-SH slope vs signed k_cv difference","k_cv_diff_signed","slope_diff_signed",55,0.0383116883116883,0.781240391733672
+"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate","NH-SH slope vs signed k_median difference","k_median_diff_signed","slope_diff_signed",55,0.116890326450833,0.395386556147125

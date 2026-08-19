@@ -18,6 +18,7 @@ suppressPackageStartupMessages({
   library(grid)
   library(deeptime)
   library(ggh4x)
+  library(openxlsx)
 })
 
 source("./R/options.R")
@@ -26,7 +27,8 @@ source("./R/functions/check_hemisphere_good.R")
 # -----------------------------------------------------------------------
 # 0. Settings
 # -----------------------------------------------------------------------
-
+era_uk <- deeptime::get_scale_data("era")
+era_uk$name[era_uk$name == "Paleozoic"] <- "Palaeozoic"
 set.seed(123)
 filter_seeds <- c(
   occurrence5  = 123L,
@@ -63,7 +65,7 @@ hemi_cols <- c(
 )
 
 era_cols <- c(
-  "Paleozoic" = "#9BBA7F",
+  "Palaeozoic" = "#9BBA7F",
   "Mesozoic"  = "#67C5CA",
   "Cenozoic"  = "#F2D2A2"
 )
@@ -1167,15 +1169,231 @@ wilcox_QC_results_by_hemisphere <- wilcox_QC_results_by_hemisphere %>%
   ) %>%
   select(-qc_filter, -qc_filter_order, -k_order, -zone_order)
 
-write.csv(wilcox_QC_results, file.path(out_dir, paste0(analysis_tag, "_wilcoxon_ALL_methods.csv")), row.names = FALSE)
-write.csv(
-  wilcox_QC_results_by_hemisphere,
-  file.path(out_dir, paste0(analysis_tag, "_wilcoxon_ALL_methods_by_hemisphere.csv")),
-  row.names = FALSE
-)
-write.csv(retention_summary, file.path(out_dir, paste0(analysis_tag, "_retention_summary_ALL_methods.csv")), row.names = FALSE)
-write.csv(climate_n_QC, file.path(out_dir, paste0(analysis_tag, "_climate_n_ALL_methods.csv")), row.names = FALSE)
+# write.csv(wilcox_QC_results, file.path(out_dir, paste0(analysis_tag, "_wilcoxon_ALL_methods.csv")), row.names = FALSE)
+# write.csv(
+#   wilcox_QC_results_by_hemisphere,
+#   file.path(out_dir, paste0(analysis_tag, "_wilcoxon_ALL_methods_by_hemisphere.csv")),
+#   row.names = FALSE
+# )
+# write.csv(retention_summary, file.path(out_dir, paste0(analysis_tag, "_retention_summary_ALL_methods.csv")), row.names = FALSE)
+# write.csv(climate_n_QC, file.path(out_dir, paste0(analysis_tag, "_climate_n_ALL_methods.csv")), row.names = FALSE)
+# -----------------------------------------------------------------------
+# Wilcoxon table: Combined + Northern + Southern
+# -----------------------------------------------------------------------
 
+wilcox_combined <- wilcox_QC_results %>%
+  mutate(`Analysis scope`="Combined")
+
+wilcox_hemi <- wilcox_QC_results_by_hemisphere %>%
+  mutate(
+    `Analysis scope`=case_when(
+      as.character(hemisphere)=="Northern" ~ "Northern",
+      as.character(hemisphere)=="Southern" ~ "Southern"
+    )
+  )
+
+wilcox_all <- bind_rows(wilcox_combined,wilcox_hemi) %>%
+  mutate(
+    `QC Scenario`=qc_name,
+    `Group 1`=group1,
+    `Group 2`=group2,
+    `Median difference`=median_diff,
+    `W statistics`=w_statistic,
+    `p value`=p_value,
+    `p-adjusted value`=p_adjusted,
+    
+    scope_order=match(
+      `Analysis scope`,
+      c("Combined","Northern","Southern")
+    ),
+    
+    qc_filter=sub("_k[0-9]+_.*$","",qc_name),
+    
+    qc_filter_order=match(
+      qc_filter,
+      c(
+        "occurrence5",
+        "occurrence10",
+        "collection5",
+        "collection10"
+      )
+    ),
+    
+    k_order=as.integer(
+      sub("^.*_k([0-9]+)_.*$","\\1",qc_name)
+    ),
+    
+    zone_order=case_when(
+      grepl("_tropical_temperate_polar$",qc_name) ~ 2L,
+      grepl("_tropical_temperate$",qc_name) ~ 1L,
+      TRUE ~ 99L
+    )
+  ) %>%
+  arrange(
+    method_group,
+    slope_metric,
+    scope_order,
+    qc_filter_order,
+    k_order,
+    zone_order,
+    `p-adjusted value`
+  )
+
+# -----------------------------------------------------------------------
+# Final supplementary-table format
+# -----------------------------------------------------------------------
+
+format_wilcox_table <- function(x){
+  x %>%
+    transmute(
+      `Analysis scope`=as.character(`Analysis scope`),
+      `QC Scenario`=`QC Scenario`,
+      `Group 1`=`Group 1`,
+      `Group 2`=`Group 2`,
+      n1=n1,
+      n2=n2,
+      `Median difference`=`Median difference`,
+      `W statistics`=`W statistics`,
+      `p value`=`p value`,
+      `p-adjusted value`=`p-adjusted value`
+    )
+}
+
+# -----------------------------------------------------------------------
+# CSV: all methods
+# -----------------------------------------------------------------------
+
+wilcox_all_csv <- wilcox_all %>%
+  select(
+    method_group,
+    slope_metric,
+    `Analysis scope`,
+    `QC Scenario`,
+    `Group 1`,
+    `Group 2`,
+    n1,
+    n2,
+    `Median difference`,
+    `W statistics`,
+    `p value`,
+    `p-adjusted value`
+  )
+
+write.csv(
+  wilcox_all_csv,
+  file.path(
+    out_dir,
+    paste0(analysis_tag,"_wilcoxon_combined_NH_SH.csv")
+  ),
+  row.names=FALSE
+)
+
+write.csv(
+  wilcox_all_csv,
+  file.path(
+    out_dir,
+    paste0(
+      analysis_tag,
+      "_wilcoxon_combined_NH_SH.csv"
+    )
+  ),
+  row.names=FALSE
+)
+
+# -----------------------------------------------------------------------
+# XLSX: one sheet per method / metric
+# -----------------------------------------------------------------------
+
+wb <- openxlsx::createWorkbook()
+
+method_grid <- wilcox_all %>%
+  distinct(method_group,slope_metric)
+
+header_style <- openxlsx::createStyle(
+  textDecoration="bold",
+  halign="center",
+  valign="center",
+  border="Bottom"
+)
+
+for(i in seq_len(nrow(method_grid))){
+  
+  method_i <- method_grid$method_group[i]
+  metric_i <- method_grid$slope_metric[i]
+  
+  tab <- wilcox_all %>%
+    filter(
+      method_group==method_i,
+      slope_metric==metric_i
+    ) %>%
+    arrange(
+      scope_order,
+      qc_filter_order,
+      k_order,
+      zone_order,
+      `p-adjusted value`
+    ) %>%
+    format_wilcox_table()
+  
+  sheet_name <- case_when(
+    method_i=="percentile_latbin_OLS" ~ paste0("Percentile_",metric_i),
+    method_i=="per_cell_balanced_resampling_OLS" ~ "Balanced_per_cell",
+    method_i=="per_cell_all_cells_OLS" ~ "All_cells",
+    TRUE ~ paste(method_i,metric_i,sep="_")
+  )
+  
+  sheet_name <- substr(sheet_name,1,31)
+  
+  openxlsx::addWorksheet(wb,sheet_name)
+  
+  openxlsx::writeData(
+    wb,
+    sheet=sheet_name,
+    x=tab,
+    headerStyle=header_style
+  )
+  
+  openxlsx::setColWidths(
+    wb,
+    sheet=sheet_name,
+    cols=1:ncol(tab),
+    widths="auto"
+  )
+  
+  openxlsx::freezePane(
+    wb,
+    sheet=sheet_name,
+    firstRow=TRUE
+  )
+  # 
+  # # show three decimal places in Excel
+  # openxlsx::addStyle(
+  #   wb,
+  #   sheet=sheet_name,
+  #   style=openxlsx::createStyle(numFmt="0.000"),
+  #   rows=2:(nrow(tab)+1),
+  #   cols=c(7,9,10),
+  #   gridExpand=TRUE,
+  #   stack=TRUE
+  # )
+}
+
+xlsx_file <- file.path(
+  out_dir,
+  paste0(
+    analysis_tag,
+    "_wilcoxon_combined_NH_SH.xlsx"
+  )
+)
+
+openxlsx::saveWorkbook(
+  wb,
+  xlsx_file,
+  overwrite=TRUE
+)
+
+message("Wilcoxon files saved:")
+message(xlsx_file)
 # -----------------------------------------------------------------------
 # 8. Plot helpers
 # -----------------------------------------------------------------------
@@ -1280,34 +1498,59 @@ draw_qc_retention_by_hemisphere <- function(method_table = method_specs_main) {
       
       p <- ggplot(
         df,
-        aes(x = n_good_with_slope, y = qc_plot_label, fill = hemisphere)
-      ) +
+        aes(x=n_good_with_slope,y=qc_plot_label,fill=hemisphere)
+      )+
         geom_col(
-          position = position_dodge(width = 0.75),
-          width = 0.65,
-          colour = "black",
-          linewidth = 0.25
-        ) +
-        scale_fill_manual(values = hemi_cols, name = "Hemisphere") +
+          position=position_dodge(width=.75),
+          width=.65,
+          colour="black",
+          linewidth=.25
+        )+
+        scale_fill_manual(
+          values=hemi_cols,
+          name="Hemisphere"
+        )+
         labs(
-          x = "Number of retained slopes",
-          y = "QC scenario",
-          title = method_lab
-        ) +
-        theme_minimal() +
+          x="Number of retained slopes",
+          y="QC scenario",
+          title=method_lab
+        )+
+        theme_minimal()+
         theme(
-          panel.grid.major.y = element_blank(),
-          panel.grid.minor = element_blank(),
-          axis.title = element_text(size = 13),
-          axis.text.x = element_text(size = 10, colour = "black"),
-          axis.text.y = element_text(size = 8.5, colour = "black"),
-          axis.ticks = element_line(color = "black", linewidth = 0.5),
-          legend.title = element_text(size = 11, face = "bold"),
-          legend.text = element_text(size = 10),
-          legend.position = "bottom",
-          panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
-          plot.title = element_text(size = 13, face = "bold", hjust = 0.5),
-          plot.margin = margin(10, 20, 10, 10)
+          panel.grid.major.y=element_blank(),
+          panel.grid.minor=element_blank(),
+          
+          axis.title=element_text(size=13),
+          axis.text.x=element_text(size=10,colour="black"),
+          axis.text.y=element_text(size=8.5,colour="black"),
+          axis.ticks=element_line(colour="black",linewidth=.5),
+          
+          panel.border=element_rect(
+            colour="black",
+            fill=NA,
+            linewidth=.5
+          ),
+          
+          plot.title=element_text(
+            size=13,
+            face="bold",
+            hjust=.5
+          ),
+          
+          # legend inside lower-right
+          legend.position=c(.90,.04),
+          legend.justification=c(1,0),
+          legend.direction="vertical",
+          legend.title=element_text(size=11,face="bold"),
+          legend.text=element_text(size=10),
+          legend.background=element_rect(
+            fill="white",
+            colour="black",
+            linewidth=.4
+          ),
+          legend.key=element_rect(fill="white"),
+          
+          plot.margin=margin(5,5,5,5)
         )
       
       print(p)
@@ -1323,11 +1566,8 @@ draw_qc_retention_by_hemisphere <- function(method_table = method_specs_main) {
       )
       
       ggsave(
-        file.path(fig_dir, "pdf", paste0(analysis_tag, "_", safe_name, ".pdf")),
-        p,
-        width = 8,
-        height = 8,
-        dpi = 300
+        file.path(fig_dir,"pdf",paste0(analysis_tag,"_",safe_name,".pdf")),
+        p,width=8,height=8,device=cairo_pdf
       )
       
       p
@@ -1965,7 +2205,7 @@ draw_time_series <- function(method_use, metric_use, qc_use = baseline_qc) {
       p <- p +
         coord_geo(xlim =c(x_max_val,0),
                   pos = as.list(rep("bottom", 2)),
-                  dat = list("periods", "era"),
+                  dat = list("periods", era_uk),
                   height = list(unit(1.45, "lines"), unit(1.45, "lines")),
                   #fill="darkgrey",
                   lab_color="black",
@@ -2071,7 +2311,7 @@ meta_df <- time_bins %>%
     era = case_when(
       bin_midpoint < 66 ~ "Cenozoic",
       bin_midpoint >= 66 & bin_midpoint < 251.902 ~ "Mesozoic",
-      TRUE ~ "Paleozoic"
+      TRUE ~ "Palaeozoic"
     )
   ) %>%
   select(bin_midpoint, stage, era)
@@ -2183,7 +2423,7 @@ paired_MAIN_df <- LDG_slope_all_QC %>%
       cbind(interval_width_Northern, interval_width_Southern),
       na.rm = TRUE
     ),
-    era = factor(era, levels = c("Paleozoic", "Mesozoic", "Cenozoic"))
+    era = factor(era, levels = c("Palaeozoic", "Mesozoic", "Cenozoic"))
   )
 
 NH_SH_cor_MAIN <- paired_MAIN_df %>%
@@ -2217,346 +2457,348 @@ write.csv(
 write.csv(paired_MAIN_df, file.path(nhsh_result_dir, "NH_SH_all_paired_MAIN_methods.csv"), row.names = FALSE)
 write.csv(NH_SH_cor_MAIN, file.path(nhsh_result_dir, "NH_SH_all_correlations_MAIN_methods.csv"), row.names = FALSE)
 
-nhsh_theme <- theme_minimal() +
+# -----------------------------------------------------------------------
+# NH-SH diagnostic plots: same style as Fig. S8
+# -----------------------------------------------------------------------
+
+nhsh_theme <- theme_minimal(base_family="sans") +
   theme(
-    panel.grid = element_blank(),
-    panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.6),
-    axis.text = element_text(size = 10, colour = "black"),
-    axis.title = element_text(size = 12, colour = "black"),
-    axis.ticks = element_line(colour = "black"),
-    legend.position = "bottom",
-    legend.direction = "horizontal",
-    legend.title = element_text(size = 11, face = "bold"),
-    legend.text = element_text(size = 10),
-    plot.tag = element_text(size = 14, face = "bold"),
-    plot.title = element_text(size = 12, face = "bold"),
-    aspect.ratio = 1
+    text=element_text(family="sans"),
+    panel.grid=element_blank(),
+    panel.border=element_rect(colour="black",fill=NA,linewidth=.6),
+    axis.text=element_text(size=10,colour="black"),
+    axis.title=element_text(size=12,colour="black"),
+    axis.ticks=element_line(colour="black"),
+    legend.position="bottom",
+    legend.direction="horizontal",
+    legend.title=element_text(size=11,face="bold"),
+    legend.text=element_text(size=10),
+    plot.tag=element_text(size=14,face="bold"),
+    aspect.ratio=1,
+    plot.margin=margin(2,2,2,2)
   )
 
-draw_sampling_dissim_time_series_by_filter <- function(slope_filter_use) {
-  
-  message("Drawing sampling-profile dissimilarity time series: ", slope_filter_use)
+
+draw_sampling_dissim_time_series_by_filter <- function(slope_filter_use){
+  message("Drawing sampling-profile dissimilarity time series: ",slope_filter_use)
   
   df <- sampling_dissim_filter %>%
-    filter(slope_filter_id == slope_filter_use) %>%
+    filter(slope_filter_id==slope_filter_use) %>%
     right_join(
       time_bins_use %>%
         transmute(
-          bin_midpoint = mid_ma,
-          stage = interval_name,
-          era = case_when(
-            bin_midpoint < 66 ~ "Cenozoic",
-            bin_midpoint >= 66 & bin_midpoint < 251.902 ~ "Mesozoic",
-            TRUE ~ "Paleozoic"
+          bin_midpoint=mid_ma,
+          stage=interval_name,
+          era=case_when(
+            bin_midpoint<66~"Cenozoic",
+            bin_midpoint<251.902~"Mesozoic",
+            TRUE~"Palaeozoic"
           )
         ),
-      by = "bin_midpoint"
+      by="bin_midpoint"
     ) %>%
     mutate(
-      slope_filter_id = slope_filter_use,
-      era = factor(era, levels = c("Paleozoic", "Mesozoic", "Cenozoic"))
+      slope_filter_id=slope_filter_use,
+      era=factor(era,levels=c("Palaeozoic","Mesozoic","Cenozoic"))
     ) %>%
     arrange(desc(bin_midpoint))
   
-  if (sum(!is.na(df$sampling_profile_dissim)) < 3) {
-    message("  Skip: fewer than 3 non-NA rows.")
+  if(sum(!is.na(df$sampling_profile_dissim))<3){
+    message("Skip: fewer than 3 non-NA rows.")
     return(NULL)
   }
   
   data(periods)
-  data(epochs)
+  x_max_val <- max(time_bins_use$max_ma,na.rm=TRUE)
+  y_max_val <- max(df$sampling_profile_dissim,na.rm=TRUE)
+  if(!is.finite(y_max_val)||y_max_val<=0) y_max_val <- 1
   
-  x_max_val <- max(time_bins_use$max_ma, na.rm = TRUE)
-  y_max_val <- max(df$sampling_profile_dissim, na.rm = TRUE)
-  
-  if (!is.finite(y_max_val) || y_max_val <= 0) {
-    y_max_val <- 1
-  }
-  
-  p <- ggplot(
-    df,
-    aes(x = bin_midpoint, y = sampling_profile_dissim)
-  ) +
-    geom_vline(
-      xintercept = periods$max_age,
-      color = "black",
-      linewidth = 0.35,
-      alpha = 0.75
-    ) +
-    geom_line(
-      linewidth = 0.8,
-      color = "black",
-      na.rm = FALSE
-    ) +
-    geom_point(
-      aes(fill = era),
-      shape = 21,
-      size = 2.4,
-      stroke = 0.45,
-      color = "black",
-      na.rm = TRUE
-    ) +
-    scale_fill_manual(
-      values = era_cols,
-      drop = FALSE,
-      name = "Era"
-    ) +
-    scale_x_reverse(
-      limits = c(x_max_val, 0),
-      breaks = seq(500, 0, -50),
-      expand = c(0, 0)
-    ) +
-    scale_y_continuous(
-      limits = c(0, y_max_val),
-      breaks = pretty(c(0, y_max_val), n = 5),
-      expand = c(0, 0)
-    ) +
-    coord_geo(xlim =c(x_max_val,0),
-              pos = as.list(rep("bottom", 2)),
-              dat = list("periods", "era"),
-              height = list(unit(1.35, "lines"), unit(1.35, "lines")),
-              #fill="darkgrey",
-              lab_color="black",
-              rot = list(0, 0), 
-              # size = list(4, 4), 
-              abbrv =list(TRUE,FALSE)) +
+  p <- ggplot(df,aes(bin_midpoint,sampling_profile_dissim))+
+    geom_vline(xintercept=periods$max_age,colour="black",linewidth=.35,alpha=.75)+
+    geom_line(linewidth=.8,colour="black",na.rm=FALSE)+
+    geom_point(aes(fill=era),shape=21,size=2.4,stroke=.45,colour="black",na.rm=TRUE)+
+    scale_fill_manual(values=era_cols,drop=FALSE,name="Era")+
+    scale_x_reverse(limits=c(x_max_val,0),breaks=seq(500,0,-50),expand=c(0,0))+
+    scale_y_continuous(limits=c(0,y_max_val),breaks=pretty(c(0,y_max_val),n=5),expand=c(0,0))+
+    coord_geo(
+      xlim=c(x_max_val,0),
+      pos=as.list(rep("bottom",2)),
+      dat=list("periods",era_uk),
+      height=list(unit(1.35,"lines"),unit(1.35,"lines")),
+      lab_color="black",
+      rot=list(0,0),
+      abbrv=list(TRUE,FALSE)
+    )+
     labs(
-      x = "Time (Ma)",
-      y = "Sampling-profile dissimilarity",
-      title = paste0("NH-SH sampling-profile dissimilarity | ", slope_filter_use)
-    ) +
-    theme_minimal() +
+      x="Time (Ma)",
+      y="Sampling-profile dissimilarity",
+      title=paste0("NH-SH sampling-profile dissimilarity | ",slope_filter_use)
+    )+
+    theme_minimal(base_family="sans")+
     theme(
-      panel.grid = element_blank(),
-      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
-      axis.title = element_text(size = 12),
-      axis.text = element_text(size = 10, colour = "black"),
-      axis.ticks = element_line(color = "black", linewidth = 0.5),
-      legend.position = "bottom",
-      legend.title = element_text(size = 11, face = "bold"),
-      legend.text = element_text(size = 10),
-      legend.box.margin = margin(t = -6, r = 0, b = 0, l = 0),
-      legend.margin = margin(t = -8, r = 0, b = 0, l = 0),
-      legend.spacing.y = unit(0.05, "cm"),
-      plot.title = element_text(size = 12, face = "bold", hjust = 0.5),
-      plot.margin = margin(5, 5, 2, 5)
+      panel.grid=element_blank(),
+      panel.border=element_rect(colour="black",fill=NA,linewidth=.6),
+      axis.title=element_text(size=12),
+      axis.text=element_text(size=10,colour="black"),
+      axis.ticks=element_line(colour="black",linewidth=.5),
+      legend.position="bottom",
+      legend.title=element_text(size=11,face="bold"),
+      legend.text=element_text(size=10),
+      legend.box.margin=margin(t=-6,r=0,b=0,l=0),
+      legend.margin=margin(t=-8,r=0,b=0,l=0),
+      legend.spacing.y=unit(.05,"cm"),
+      plot.title=element_text(size=12,face="bold",hjust=.5),
+      plot.margin=margin(5,5,2,5)
     )
   
-  print(p)
+  out_jpg <- file.path(nhsh_figure_dir,"sampling_dissim_time_series_jpg","by_slope_filter")
+  out_pdf <- file.path(nhsh_figure_dir,"sampling_dissim_time_series_pdf","by_slope_filter")
+  dir.create(out_jpg,recursive=TRUE,showWarnings=FALSE)
+  dir.create(out_pdf,recursive=TRUE,showWarnings=FALSE)
   
-  out_jpg <- file.path(
-    nhsh_figure_dir,
-    "sampling_dissim_time_series_jpg",
-    "by_slope_filter"
-  )
+  safe_name <- clean_name(paste(slope_filter_use,"sampling_profile_dissim_time_series",sep="_"))
   
-  out_pdf <- file.path(
-    nhsh_figure_dir,
-    "sampling_dissim_time_series_pdf",
-    "by_slope_filter"
-  )
-  
-  dir.create(out_jpg, recursive = TRUE, showWarnings = FALSE)
-  dir.create(out_pdf, recursive = TRUE, showWarnings = FALSE)
-  
-  safe_name <- clean_name(
-    paste(
-      slope_filter_use,
-      "sampling_profile_dissim_time_series",
-      sep = "_"
-    )
-  )
-  
-  ggsave(
-    file.path(out_jpg, paste0(safe_name, ".jpg")),
-    p,
-    width = 8,
-    height = 4,
-    dpi = 300
-  )
-  
-  ggsave(
-    file.path(out_pdf, paste0(safe_name, ".pdf")),
-    p,
-    width = 8,
-    height = 4,
-    dpi = 300
-  )
+  ggsave(file.path(out_jpg,paste0(safe_name,".jpg")),p,width=8,height=4,dpi=300,bg="white")
+  ggsave(file.path(out_pdf,paste0(safe_name,".pdf")),p,width=8,height=4,device=cairo_pdf,bg="white")
   
   p
 }
 
-draw_one_nh_sh_main <- function(method_use, metric_use, qc_use) {
+draw_one_nh_sh_main <- function(method_use,metric_use,qc_use){
   
-  message("Drawing NH-SH diagnostics: ", method_use, " / ", metric_use, " / ", qc_use)
+  message("Drawing NH-SH diagnostics: ",method_use," / ",metric_use," / ",qc_use)
   
   paired_df <- paired_MAIN_df %>%
-    filter(method_group == method_use, slope_metric == metric_use, qc_name == qc_use)
+    filter(method_group==method_use,slope_metric==metric_use,qc_name==qc_use)
   
-  safe_name <- clean_name(paste(method_use, metric_use, qc_use, sep = "_"))
+  safe_name <- clean_name(paste(method_use,metric_use,qc_use,sep="_"))
   
-  paired_subdir <- file.path(nhsh_result_dir, "paired", method_use, metric_use)
-  cor_subdir <- file.path(nhsh_result_dir, "cor", method_use, metric_use)
-  jpg_subdir <- file.path(nhsh_figure_dir, "jpg", method_use, metric_use)
-  pdf_subdir <- file.path(nhsh_figure_dir, "pdf", method_use, metric_use)
+  paired_subdir <- file.path(nhsh_result_dir,"paired",method_use,metric_use)
+  cor_subdir <- file.path(nhsh_result_dir,"cor",method_use,metric_use)
+  jpg_subdir <- file.path(nhsh_figure_dir,"jpg",method_use,metric_use)
+  pdf_subdir <- file.path(nhsh_figure_dir,"pdf",method_use,metric_use)
   
-  dir.create(paired_subdir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(cor_subdir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(jpg_subdir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(pdf_subdir, recursive = TRUE, showWarnings = FALSE)
+  purrr::walk(
+    c(paired_subdir,cor_subdir,jpg_subdir,pdf_subdir),
+    ~dir.create(.x,recursive=TRUE,showWarnings=FALSE)
+  )
   
   write.csv(
     paired_df,
-    file.path(paired_subdir, paste0(safe_name, "_paired.csv")),
-    row.names = FALSE
+    file.path(paired_subdir,paste0(safe_name,"_paired.csv")),
+    row.names=FALSE
   )
   
-  if (nrow(paired_df) < 3) {
-    message("  Skip: fewer than 3 paired NH-SH rows.")
+  if(nrow(paired_df)<3){
     return(list(
-      summary = tibble(
-        method_group = method_use,
-        slope_metric = metric_use,
-        qc_name = qc_use,
-        n_pairs = nrow(paired_df),
-        status = "skipped_too_few_pairs"
+      summary=tibble(
+        method_group=method_use,
+        slope_metric=metric_use,
+        qc_name=qc_use,
+        n_pairs=nrow(paired_df),
+        status="skipped_too_few_pairs"
       ),
-      paired_df = paired_df,
-      cor_results = tibble(),
-      plot = NULL
+      paired_df=paired_df,
+      cor_results=tibble(),
+      plot=NULL
     ))
   }
   
   cor_results <- bind_rows(
-    cor_one(paired_df, "slope_Northern", "slope_Southern", "NH slope vs SH slope"),
-    cor_one(paired_df, "sampling_profile_dissim", "slope_diff_abs", "|NH-SH slope| vs sampling-profile dissimilarity"),
-    cor_one(paired_df, "k_cv_diff", "slope_diff_abs", "|NH-SH slope| vs k_cv difference"),
-    cor_one(paired_df, "k_median_asym", "slope_diff_abs", "|NH-SH slope| vs k_median asymmetry"),
-    cor_one(paired_df, "sampling_profile_dissim", "slope_diff_signed", "NH-SH slope vs sampling-profile dissimilarity"),
-    cor_one(paired_df, "k_cv_diff_signed", "slope_diff_signed", "NH-SH slope vs signed k_cv difference"),
-    cor_one(paired_df, "k_median_diff_signed", "slope_diff_signed", "NH-SH slope vs signed k_median difference"),
-     ) %>%
+    cor_one(paired_df,"slope_Northern","slope_Southern",
+            "NH slope vs SH slope"),
+    cor_one(paired_df,"sampling_profile_dissim","slope_diff_abs",
+            "|NH-SH slope| vs sampling-profile dissimilarity"),
+    cor_one(paired_df,"k_cv_diff","slope_diff_abs",
+            "|NH-SH slope| vs k_cv difference"),
+    cor_one(paired_df,"k_median_asym","slope_diff_abs",
+            "|NH-SH slope| vs k_median asymmetry"),
+    cor_one(paired_df,"sampling_profile_dissim","slope_diff_signed",
+            "NH-SH slope vs sampling-profile dissimilarity"),
+    cor_one(paired_df,"k_cv_diff_signed","slope_diff_signed",
+            "NH-SH slope vs signed k_cv difference"),
+    cor_one(paired_df,"k_median_diff_signed","slope_diff_signed",
+            "NH-SH slope vs signed k_median difference")
+  ) %>%
     mutate(
-      method_group = method_use,
-      slope_metric = metric_use,
-      qc_name = qc_use
+      method_group=method_use,
+      slope_metric=metric_use,
+      qc_name=qc_use
     ) %>%
-    select(method_group, slope_metric, qc_name, everything())
+    select(method_group,slope_metric,qc_name,everything())
   
   write.csv(
     cor_results,
-    file.path(cor_subdir, paste0(safe_name, "_cor.csv")),
-    row.names = FALSE
+    file.path(cor_subdir,paste0(safe_name,"_cor.csv")),
+    row.names=FALSE
   )
   
-  cor_A <- cor_results %>% filter(test == "NH slope vs SH slope")
-  cor_B <- cor_results %>% filter(test == "|NH-SH slope| vs sampling-profile dissimilarity")
+  cor_A <- cor_results %>% filter(test=="NH slope vs SH slope")
+  cor_B <- cor_results %>%
+    filter(test=="|NH-SH slope| vs sampling-profile dissimilarity")
   
-  lab_A <- paste0(
-    "\u03c1 = ", fmt_num(cor_A$estimate),
-    "\np = ", fmt_num(cor_A$p_value),
-    "\nn = ", cor_A$n
+  # ---------------------------------------------------------------------
+  # p1
+  # ---------------------------------------------------------------------
+  
+  axis_lim <- safe_range_expand(
+    c(paired_df$slope_Northern,paired_df$slope_Southern)
   )
   
-  lab_B <- paste0(
-    "\u03c1 = ", fmt_num(cor_B$estimate),
-    "\np = ", fmt_num(cor_B$p_value),
-    "\nn = ", cor_B$n
+  xA <- axis_lim[2]-.06*diff(axis_lim)
+  yA <- axis_lim[1]+.07*diff(axis_lim)
+  dyA <- .075*diff(axis_lim)
+  
+  lab_A <- tibble(
+    x=xA,
+    y=c(yA+2*dyA,yA+dyA,yA),
+    label=c(
+      paste0("\u03c1 = ",fmt_num(cor_A$estimate)),
+      paste0("p = ",fmt_num(cor_A$p_value)),
+      paste0("n = ",cor_A$n)
+    )
   )
   
-  axis_lim <- safe_range_expand(c(paired_df$slope_Northern, paired_df$slope_Southern))
-  
-  p1 <- ggplot(paired_df, aes(x = slope_Northern, y = slope_Southern, fill = era)) +
-    geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40", linewidth = 0.4) +
-    geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40", linewidth = 0.4) +
-    geom_abline(slope = 1, intercept = 0, linetype = "dashed", linewidth = 0.6) +
-    geom_point(shape = 21, size = 3, stroke = 0.6, colour = "black", alpha = 0.9) +
-    annotate(
-      "text",
-      x = Inf,
-      y = -Inf,
-      label = lab_A,
-      hjust = 1.05,
-      vjust = -0.2,
-      size = 3.5,
-      colour = "black"
-    ) +
-    scale_fill_manual(values = era_cols, drop = FALSE) +
-    coord_equal(xlim = axis_lim, ylim = axis_lim, expand = FALSE) +
+  p1 <- ggplot(
+    paired_df,
+    aes(slope_Northern,slope_Southern,fill=era)
+  )+
+    geom_hline(yintercept=0,linetype="dashed",colour="grey40",linewidth=.4)+
+    geom_vline(xintercept=0,linetype="dashed",colour="grey40",linewidth=.4)+
+    geom_abline(slope=1,intercept=0,linetype="dashed",linewidth=.6)+
+    geom_point(shape=21,size=3,stroke=.6,colour="black",alpha=.9)+
+    geom_text(
+      data=lab_A,
+      aes(x=x,y=y,label=label),
+      inherit.aes=FALSE,
+      hjust=1,
+      size=3.5,
+      colour="black"
+    )+
+    scale_fill_manual(values=era_cols,drop=FALSE)+
+    coord_equal(xlim=axis_lim,ylim=axis_lim,expand=FALSE)+
     labs(
-      x = "Northern Hemisphere slope",
-      y = "Southern Hemisphere slope",
-      fill = "Era",
-      tag = "(a)"
-    ) +
+      x="Northern Hemisphere slope",
+      y="Southern Hemisphere slope",
+      fill="Era",
+      tag="(a)"
+    )+
     nhsh_theme
   
-  p2 <- ggplot(paired_df, aes(x = sampling_profile_dissim, y = slope_diff_abs, fill = era)) +
-    geom_point(shape = 21, size = 3, stroke = 0.6, colour = "black", alpha = 0.9) +
-    scale_fill_manual(values = era_cols, drop = FALSE) +
+  # ---------------------------------------------------------------------
+  # p2
+  # ---------------------------------------------------------------------
+  
+  fit_ok <- complete.cases(
+    paired_df$sampling_profile_dissim,
+    paired_df$slope_diff_abs
+  )
+  
+  ok_fit <- sum(fit_ok)>=3 &&
+    n_distinct(paired_df$sampling_profile_dissim[fit_ok])>1 &&
+    n_distinct(paired_df$slope_diff_abs[fit_ok])>1
+  
+  p2 <- ggplot(
+    paired_df,
+    aes(sampling_profile_dissim,slope_diff_abs,fill=era)
+  )+
+    geom_point(shape=21,size=3,stroke=.6,colour="black",alpha=.9)+
+    scale_fill_manual(values=era_cols,drop=FALSE)+
     labs(
-      x = "NH-SH sampling-profile dissimilarity",
-      y = "|Northern slope - Southern slope|",
-      fill = "Era",
-      tag = "(b)"
-    ) +
+      x="NH-SH sampling-profile dissimilarity",
+      y="|Northern slope - Southern slope|",
+      fill="Era",
+      tag="(b)"
+    )+
     nhsh_theme
   
-  fit_ok <- complete.cases(paired_df$sampling_profile_dissim, paired_df$slope_diff_abs)
-  
-  if (
-    sum(fit_ok) >= 3 &&
-    length(unique(paired_df$sampling_profile_dissim[fit_ok])) > 1 &&
-    length(unique(paired_df$slope_diff_abs[fit_ok])) > 1
-  ) {
-    p2 <- p2 +
+  if(ok_fit){
+    p2 <- p2+
       geom_smooth(
-        aes(group = 1),
-        method = "lm",
-        formula = y ~ x,
-        se = TRUE,
-        colour = "black",
-        fill = "grey80",
-        linewidth = 0.6
+        aes(group=1),
+        method="lm",
+        formula=y~x,
+        se=TRUE,
+        colour="black",
+        fill="grey80",
+        linewidth=.6
       )
   }
   
-  p2 <- p2 +
-    annotate(
-      "text",
-      x = Inf,
-      y = Inf,
-      label = lab_B,
-      hjust = 1.05,
-      vjust = 1.1,
-      size = 3.5,
-      colour = "black"
+  xr <- range(paired_df$sampling_profile_dissim,na.rm=TRUE)
+  yr <- range(paired_df$slope_diff_abs,na.rm=TRUE)
+  
+  xB <- xr[1]+.46*diff(xr)
+  yB <- yr[2]-.03*diff(yr)
+  dyB <- .075*diff(yr)
+  
+  lab_B <- tibble(
+    x=xB,
+    y=c(yB,yB-dyB,yB-2*dyB),
+    label=c(
+      paste0("\u03c1 = ",fmt_num(cor_B$estimate)),
+      paste0("p = ",fmt_num(cor_B$p_value)),
+      paste0("n = ",cor_B$n)
+    )
+  )
+  
+  p2 <- p2+
+    geom_text(
+      data=lab_B,
+      aes(x=x,y=y,label=label),
+      inherit.aes=FALSE,
+      hjust=1,
+      size=3.5,
+      colour="black"
     )
   
-  final_plot <- wrap_plots(p1, p2, ncol = 2, guides = "collect") +
-    plot_annotation(title = paste0(method_use, " | ", metric_use, "\n", qc_use)) &
+  # ---------------------------------------------------------------------
+  # Combine + save
+  # ---------------------------------------------------------------------
+  
+  final_plot <- wrap_plots(
+    p1,p2,
+    ncol=2,
+    guides="collect"
+  ) &
     theme(
-      legend.position = "bottom",
-      legend.direction = "horizontal",
-      plot.title = element_text(size = 12, face = "bold", hjust = 0.5)
+      legend.position="bottom",
+      legend.direction="horizontal",
+      plot.margin=margin(2,0,2,0)
     )
   
   print(final_plot)
   
-  ggsave(file.path(jpg_subdir, paste0(safe_name, ".jpg")), final_plot, width = 8, height = 4, dpi = 300)
-  ggsave(file.path(pdf_subdir, paste0(safe_name, ".pdf")), final_plot, width = 8, height = 4, dpi = 300)
+  ggsave(
+    file.path(jpg_subdir,paste0(safe_name,".jpg")),
+    final_plot,
+    width=7.3,
+    height=4,
+    dpi=300,
+    bg="white"
+  )
+  
+  ggsave(
+    file.path(pdf_subdir,paste0(safe_name,".pdf")),
+    final_plot,
+    width=7.3,
+    height=4,
+    dpi=300,
+    device=cairo_pdf,
+    bg="white"
+  )
   
   list(
-    summary = tibble(
-      method_group = method_use,
-      slope_metric = metric_use,
-      qc_name = qc_use,
-      n_pairs = nrow(paired_df),
-      status = "ok"
+    summary=tibble(
+      method_group=method_use,
+      slope_metric=metric_use,
+      qc_name=qc_use,
+      n_pairs=nrow(paired_df),
+      status="ok"
     ),
-    paired_df = paired_df,
-    cor_results = cor_results,
-    plot = final_plot
+    paired_df=paired_df,
+    cor_results=cor_results,
+    plot=final_plot
   )
 }
 

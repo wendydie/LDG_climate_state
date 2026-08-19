@@ -44,7 +44,7 @@ safe_source <- function(file) {
 # 2. Settings
 # -----------------------------------------------------------------------
 percentiles_use <- c("q50", "q60", "q75", "q90", "q95")
-lat_bins_to_run <- c(36, 18, 12, 6) #36, 18, 12, 6
+lat_bins_to_run <- c(12) #36, 18, 12, 6
 script_list <- c(
   # "./R/04_LDG_completeness_estimate_FigS2.R",
   # "./R/02_LDG_slope_per_cell.R",
@@ -52,9 +52,10 @@ script_list <- c(
   # "./R/02_LDG_slope_fig_per_cell.R",
   # "./R/02_LDG_slope_fig_per_cell_FigS4.R",
   # "./R/02_LDG_percentile_eras_FigS5.R",
+  # "./R/02_LDG_slope_fig3_per_cell_FigS6S7.R",
   # "./R/02_LDG_slope_fig2_per_cell.R",
   # "./R/02_LDG_slope_fig3_per_cell.R"
-  "./R/03_LDG_compared_in_climate_state_per_cell.R",
+  # "./R/03_LDG_compared_in_climate_state_per_cell.R",
   # "./R/03b_LDG_wilcoxon_by_hemisphere_climate_state.R"
   "./R/02b_LDG_slope_QC_sensitivity.R",
   # "./R/02_03_LDG_slope_per_cell_allcells_climate_state.R",

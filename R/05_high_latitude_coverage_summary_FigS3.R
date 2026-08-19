@@ -17,7 +17,8 @@ suppressPackageStartupMessages({
 
 source("./R/options.R")
 source("./R/functions/check_hemisphere_good.R")
-
+era_uk <- deeptime::get_scale_data("era")
+era_uk$name[era_uk$name == "Paleozoic"] <- "Palaeozoic"
 # -----------------------------------------------------------------------
 # 1. Settings
 # -----------------------------------------------------------------------
@@ -423,7 +424,7 @@ draw_cov_panel <- function(hemi_use, hemi_col, tag_lab, show_x = FALSE) {
     p <- p +
       coord_geo(xlim =c(x_max_val,0),
                 pos = as.list(rep("bottom", 2)),
-                dat = list("periods", "era"),
+                dat = list("periods", era_uk),
                 height = list(unit(1.35, "lines"), unit(1.35, "lines")),
                 #fill="darkgrey",
                 lab_color="black",

@@ -15,18 +15,10 @@ suppressPackageStartupMessages({
   library(cowplot)
   library(deeptime)
 })
-
+era_uk <- deeptime::get_scale_data("era")
+era_uk$name[era_uk$name == "Paleozoic"] <- "Palaeozoic"
 source("./R/options.R")
-font_add(
-  family = "Arial",
-  regular = "/System/Library/Fonts/Supplemental/Arial.ttf",
-  bold = "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-  italic = "/System/Library/Fonts/Supplemental/Arial Italic.ttf",
-  bolditalic = "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf"
-)
 
-showtext_auto()
-showtext_opts(dpi = 300)
 # -----------------------------------------------------------------------
 # 0.Settings
 # -----------------------------------------------------------------------
@@ -429,7 +421,8 @@ P_geo<-ggplot(data.frame(x=c(x_max_val,0),y=c(0,0)),aes(x=x,y=y))+
   # )+
   coord_geo(xlim =c(x_max_val,0),
             pos = as.list(rep("bottom", 2)),
-            dat = list("periods", "era"),
+            # dat = list("periods", "era"),
+            dat = list("periods", era_uk),
             height = list(unit(1.35, "lines"), unit(1.35, "lines")),
             #fill="darkgrey",
             lab_color="black",

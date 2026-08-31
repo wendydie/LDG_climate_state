@@ -1,0 +1,11 @@
+"method_group","slope_metric","qc_name","group1","group2","normal","test_type","shapiro_p1","shapiro_p2"
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coldhouse","Coolhouse",FALSE,"Wilcoxon",NA,NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coldhouse","Transitional",FALSE,"Wilcoxon",NA,NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coldhouse","Warmhouse",FALSE,"Wilcoxon",NA,NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coldhouse","Hothouse",FALSE,"Wilcoxon",NA,NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coolhouse","Transitional",FALSE,"Wilcoxon",NA,NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coolhouse","Warmhouse",FALSE,"Wilcoxon",NA,NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coolhouse","Hothouse",FALSE,"Wilcoxon",NA,NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Transitional","Warmhouse",FALSE,"Wilcoxon",NA,NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Transitional","Hothouse",FALSE,"Wilcoxon",NA,NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Warmhouse","Hothouse",FALSE,"Wilcoxon",NA,NA

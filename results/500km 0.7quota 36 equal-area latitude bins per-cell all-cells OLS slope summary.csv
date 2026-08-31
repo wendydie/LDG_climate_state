@@ -1,0 +1,3 @@
+"hemisphere","good_count","greater_than_0","less_than_0","equal_to_0","reverse_LDG","normal_LDG","flat_LDG","median_slope","mean_slope","sd_slope"
+"Northern",76,19,57,0,25,75,0,-0.201750309356172,-0.250806253012221,0.643437380829289
+"Southern",72,33,39,0,45.8333333333333,54.1666666666667,0,-0.0876809003923634,-0.0738832594162105,0.813667258940267

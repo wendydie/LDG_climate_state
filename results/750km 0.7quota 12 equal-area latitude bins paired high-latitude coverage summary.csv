@@ -1,0 +1,2 @@
+"n_paired_good_stages","prop_both_reach_60","prop_both_reach_66_5","prop_both_reach_70","prop_both_reach_75","median_max_abs_lat_diff","mean_max_abs_lat_diff","median_prop_cells_ge_60_diff","median_prop_cells_ge_70_diff"
+42,0.619047619047619,0.523809523809524,0.380952380952381,0.238095238095238,6.42431613115451,11.9581427382778,0.063301282051282,0.0307765151515152

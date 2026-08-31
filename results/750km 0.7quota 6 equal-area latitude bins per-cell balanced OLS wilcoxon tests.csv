@@ -1,0 +1,11 @@
+"method_group","slope_metric","qc_name","group1","group2","n1","n2","median1","median2","median_diff","p_value","w_statistic","iqr1","iqr2","test_note","p_adjusted"
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coldhouse","Coolhouse",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coldhouse","Transitional",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coldhouse","Warmhouse",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coldhouse","Hothouse",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coolhouse","Transitional",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coolhouse","Warmhouse",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Coolhouse","Hothouse",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Transitional","Warmhouse",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Transitional","Hothouse",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate","Warmhouse","Hothouse",0,0,NA,NA,NA,NA,NA,NA,NA,"Skipped: n < 2",NA

@@ -1,0 +1,5 @@
+"slope_filter_id","qc_type","occurrence_min","collection_min"
+"collection5","collection",NA,5
+"collection10","collection",NA,10
+"occurrence5","occurrence",5,NA
+"occurrence10","occurrence",10,NA

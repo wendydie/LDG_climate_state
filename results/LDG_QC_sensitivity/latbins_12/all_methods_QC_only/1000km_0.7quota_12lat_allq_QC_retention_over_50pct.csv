@@ -1,0 +1,16 @@
+"method_group","slope_metric","qc_name","n_total","n_retained","prop_retained","n_retained_Northern","n_retained_Southern"
+"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate",174,126,0.724137931034483,63,63
+"per_cell_all_cells_OLS","all_cells_slope","occurrence10_k1_tropical_temperate",174,121,0.695402298850575,59,62
+"per_cell_all_cells_OLS","all_cells_slope","collection5_k1_tropical_temperate",174,116,0.666666666666667,56,60
+"per_cell_all_cells_OLS","all_cells_slope","collection10_k1_tropical_temperate",174,92,0.528735632183908,46,46
+"per_cell_all_cells_OLS","all_cells_slope","occurrence5_k1_tropical_temperate_polar",174,87,0.5,46,41
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate",174,126,0.724137931034483,63,63
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence10_k1_tropical_temperate",174,121,0.695402298850575,59,62
+"per_cell_balanced_resampling_OLS","median_resampled_slope","collection5_k1_tropical_temperate",174,116,0.666666666666667,56,60
+"per_cell_balanced_resampling_OLS","median_resampled_slope","collection10_k1_tropical_temperate",174,92,0.528735632183908,46,46
+"per_cell_balanced_resampling_OLS","median_resampled_slope","occurrence5_k1_tropical_temperate_polar",174,87,0.5,46,41
+"percentile_latbin_OLS","q75","occurrence5_k1_tropical_temperate",174,126,0.724137931034483,63,63
+"percentile_latbin_OLS","q75","occurrence10_k1_tropical_temperate",174,121,0.695402298850575,59,62
+"percentile_latbin_OLS","q75","collection5_k1_tropical_temperate",174,116,0.666666666666667,56,60
+"percentile_latbin_OLS","q75","collection10_k1_tropical_temperate",174,92,0.528735632183908,46,46
+"percentile_latbin_OLS","q75","occurrence5_k1_tropical_temperate_polar",174,87,0.5,46,41

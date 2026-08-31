@@ -1,0 +1,2 @@
+"n_good_stage_hemisphere","median_max_abs_lat","mean_max_abs_lat","q25_max_abs_lat","q75_max_abs_lat","n_reaches_60","n_reaches_66_5","n_reaches_70","n_reaches_75","prop_reaches_60","prop_reaches_66_5","prop_reaches_70","prop_reaches_75","median_prop_cells_ge_60","median_prop_cells_ge_66_5","median_prop_cells_ge_70","median_prop_cells_ge_75"
+122,71.9435853461596,69.835736177684,63.2969896070605,78.2922453964142,103,81,71,55,0.844262295081967,0.663934426229508,0.581967213114754,0.450819672131148,0.0976190476190476,0.0588235294117647,0.0267094017094017,0
